@@ -6,7 +6,7 @@ import { Plus, MapPin, Send, CheckCircle2, XCircle, Search, AlertTriangle, Clock
 import { cn, formatDate } from '../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
 import { APIProvider, Map, Marker, AdvancedMarker, useMap } from '@vis.gl/react-google-maps';
-import { generateDailyPDF } from '../lib/reportGenerator';
+
 import { RoutePlanner } from './RoutePlanner';
 
 const API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
@@ -779,7 +779,7 @@ export function CollectionsView() {
                        </div>
                     </div>
                     <button 
-                      onClick={() => {
+                      onClick={async () => {
                         const url = generateGoogleMapsRoute(driverTasks);
                         if (url) window.open(url, '_blank');
                       }}
@@ -1041,7 +1041,7 @@ export function CollectionsView() {
         </div>
         <div className="flex flex-wrap items-center gap-3">
           <button 
-            onClick={() => {
+            onClick={async () => {
               const activeReqs = requests.filter(r => {
                 const reqDate = r.scheduledDate || (r.createdAt?.toDate ? r.createdAt.toDate() : new Date(r.createdAt)).toISOString().split('T')[0];
                 return reqDate === dateFilter;
@@ -1050,6 +1050,7 @@ export function CollectionsView() {
                 const logDate = l.startTime?.toDate ? l.startTime.toDate() : new Date(l.startTime);
                 return logDate.toISOString().split('T')[0] === dateFilter;
               });
+              const { generateDailyPDF } = await import('../lib/reportGenerator');
               generateDailyPDF(dateFilter, activeReqs, activeFleetLogs, drivers, user?.displayName || 'Administrador');
             }}
             className="bg-ork-primary/20 border border-ork-primary/30 hover:bg-ork-primary/30 text-ork-primary font-black px-6 py-4 rounded-2xl uppercase tracking-[0.2em] text-xs transition-all active:scale-95 flex items-center gap-2 group shadow-[0_0_20px_rgba(123,92,255,0.1)]"
@@ -1365,7 +1366,7 @@ export function CollectionsView() {
                   <div className="flex gap-4 pt-4">
                     <button 
                       type="button"
-                      onClick={() => {
+                      onClick={async () => {
                         setShowAddForm(false);
                         setEditingRequest(null);
                       }}

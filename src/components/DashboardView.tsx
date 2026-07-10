@@ -9,7 +9,7 @@ import {
 import { Car, AlertTriangle, TrendingUp, DollarSign, Calendar, User, CheckCircle2, ChevronDown, Filter, FileText } from 'lucide-react';
 import { formatCurrency, cn, formatDate } from '../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
-import { generateDailyPDF } from '../lib/reportGenerator';
+
 import { predictNextMaintenance } from '../lib/maintenance-manual';
 
 type DateFilter = 'day' | 'week' | 'month' | 'all' | 'custom';
@@ -199,7 +199,7 @@ export function DashboardView() {
             <span>{requests.length} entradas</span>
           </div>
           <button 
-            onClick={() => {
+            onClick={async () => {
               const today = new Date().toISOString().split('T')[0];
               const todayReqs = requests.filter(r => {
                 const reqDate = r.scheduledDate || (r.createdAt?.toDate ? r.createdAt.toDate() : new Date(r.createdAt)).toISOString().split('T')[0];
@@ -209,6 +209,7 @@ export function DashboardView() {
                 const logDate = l.startTime?.toDate ? l.startTime.toDate() : new Date(l.startTime);
                 return logDate.toISOString().split('T')[0] === today;
               });
+              const { generateDailyPDF } = await import('../lib/reportGenerator');
               generateDailyPDF(today, todayReqs, todayLogs, drivers, user?.displayName || 'Administrador');
             }}
             className="bg-ork-primary/20 border border-ork-primary/30 hover:bg-ork-primary/30 text-ork-primary font-black px-4 py-2.5 rounded-xl uppercase tracking-widest text-[10px] transition-all active:scale-95 flex items-center gap-2 group shadow-[0_0_20px_rgba(123,92,255,0.1)]"
