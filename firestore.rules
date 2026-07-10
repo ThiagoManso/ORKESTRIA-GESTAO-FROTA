@@ -1,0 +1,147 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 0. Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Helpers ---
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isEmailVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && getUserData().role == 'admin';
+    }
+
+    function isDriver() {
+      return isSignedIn() && getUserData().role == 'driver';
+    }
+
+    function isOwner(data) {
+      return isSignedIn() && data.ownerId == request.auth.uid;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isValidCollectionRequest(data) {
+      return data.title is string && data.title.size() <= 256 &&
+             data.address is string && data.address.size() <= 512 &&
+             data.status in ['pending', 'assigned', 'accepted', 'refused', 'completed', 'delivered_manual'] &&
+             (!('type' in data) || data.type in ['coleta', 'entrega']) &&
+             (!('priority' in data) || data.priority in ['low', 'medium', 'high']) &&
+             (!('ownerId' in data) || (data.ownerId is string && data.ownerId.size() <= 128));
+    }
+
+    // --- User Profiles ---
+    match /users/{userId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && request.auth.uid == userId;
+      allow update: if isSignedIn() && (
+        isAdmin() || 
+        (request.auth.uid == userId && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['role'])))
+      );
+      allow delete: if isAdmin();
+    }
+
+    // --- Invites/Pre-registration ---
+    match /invites/{inviteId} {
+      allow read: if true; // Needed to check role during signup
+      allow write: if isAdmin();
+    }
+
+    // --- Fleet Management Rules ---
+    
+    // Vehicles
+    match /vehicles/{vehicleId} {
+      allow read: if isSignedIn();
+      allow create: if isAdmin();
+      allow update, delete: if isAdmin();
+    }
+
+    // Maintenance records and schedules
+    match /maintenance_records/{recordId} {
+      allow read: if isSignedIn();
+      allow create: if isAdmin();
+      allow update, delete: if isAdmin();
+    }
+    match /maintenance_schedules/{scheduleId} {
+      allow read: if isSignedIn();
+      allow create: if isAdmin();
+      allow update, delete: if isAdmin();
+    }
+
+    // Vehicle Logs (Usage)
+    match /vehicle_logs/{logId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn();
+      allow update: if isSignedIn();
+      allow delete: if isAdmin();
+    }
+
+    // Route Manifests
+    match /route_manifests/{manifestId} {
+      allow read: if isSignedIn();
+      allow create: if isAdmin() || (isSignedIn() && (getUserData().role == 'manager' || getUserData().role == 'operator'));
+      allow update: if isSignedIn();
+      allow delete: if isAdmin() || (isSignedIn() && (getUserData().role == 'manager' || getUserData().role == 'operator'));
+    }
+
+    // Collection Requests
+    match /collection_requests/{requestId} {
+      allow read: if isSignedIn();
+      allow create: if (isSignedIn() || request.resource.data.ownerId == "public") && isValidCollectionRequest(request.resource.data);
+      allow update: if isSignedIn() && isValidCollectionRequest(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    // Drivers
+    match /drivers/{driverId} {
+      allow read: if isSignedIn();
+      allow create, update, delete: if isAdmin();
+    }
+
+    // Fines
+    match /fines/{fineId} {
+      allow read: if isSignedIn();
+      allow create, update, delete: if isAdmin();
+    }
+
+    // Checklists
+    match /checklists/{checklistId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn();
+      allow update, delete: if isAdmin();
+    }
+
+    // Purchase Requests
+    match /purchase_requests/{requestId} {
+      allow read: if isSignedIn();
+      allow create: if true;
+      allow update: if isSignedIn();
+      allow delete: if isAdmin() || (isSignedIn() && getUserData().role == 'purchasing');
+    }
+
+    // Settings
+    match /settings/{settingId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    // Connection Test
+    match /test/connection {
+      allow read: if true;
+    }
+  }
+}
