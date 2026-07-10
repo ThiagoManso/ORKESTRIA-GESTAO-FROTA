@@ -18,7 +18,7 @@ import { ChevronRight, Car, Menu } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { isAdminEmail } from './lib/utils';
 
-import { SplashScreen } from './components/SplashScreen';
+
 
 import { LoginView } from './components/LoginView';
 
@@ -26,7 +26,6 @@ function AppContent() {
   const { user, profile, loading } = useAuth();
   const [activeTab, setActiveTab] = useState('dashboard');
   const [isCollapsed, setIsCollapsed] = useState(true);
-  const [showSplash, setShowSplash] = useState(true);
 
   const path = window.location.pathname;
   const search = window.location.search;
@@ -47,9 +46,6 @@ function AppContent() {
     }
   }, [profile]);
 
-  if (showSplash) {
-    return <SplashScreen onComplete={() => setShowSplash(false)} />;
-  }
 
   if (isPublicPurchase) {
     return <PublicPurchaseRequestForm />;

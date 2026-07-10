@@ -1,6 +1,6 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
-import { initializeFirestore, doc, getDocFromServer, getFirestore, terminate } from 'firebase/firestore';
+import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, doc, getDocFromServer, getFirestore, terminate } from 'firebase/firestore';
 import { getMessaging, getToken, onMessage } from 'firebase/messaging';
 import staticConfig from '../../firebase-applet-config.json';
 
@@ -22,14 +22,20 @@ const app = initializeApp(firebaseConfig);
 const initFirestore = (dbId?: string) => {
   try {
     return initializeFirestore(app, {
-      experimentalForceLongPolling: true,
+      experimentalForceLongPolling: true
     }, dbId);
   } catch (e) {
     return getFirestore(app, dbId);
   }
 };
 
-export let db = initFirestore(databaseId && databaseId !== '(default)' ? databaseId : undefined);
+
+let safeDbId = databaseId;
+if (safeDbId && (safeDbId.includes('/') || safeDbId.includes('.com') || safeDbId === '(default)')) {
+  safeDbId = undefined;
+}
+export let db = initFirestore(safeDbId);
+
 export const auth = getAuth();
 
 export const messaging = typeof window !== 'undefined' ? getMessaging(app) : null;
@@ -52,15 +58,3 @@ export const requestNotificationPermission = async () => {
 };
 
 // No need to alert on every boot if connection fails briefly
-async function testConnection() {
-  try {
-    const testDoc = doc(db, 'test', 'connection');
-    await getDocFromServer(testDoc);
-    console.log("[Firebase] Initial connection check: Online");
-  } catch (error: any) {
-    // Quietly log, it's expected in some environments or during cold start
-    console.debug("[Firebase] Initial connection check: Waiting for network...");
-  }
-}
-
-testConnection();

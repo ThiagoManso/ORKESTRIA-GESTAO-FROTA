@@ -9,6 +9,8 @@ export function LoginView() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
+  const [cargo, setCargo] = useState('');
+  const [setor, setSetor] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -22,7 +24,7 @@ export function LoginView() {
         await loginWithEmail(email, password);
       } else {
         if (!name) throw new Error('Nome é obrigatório');
-        await registerWithEmail(email, password, name);
+        await registerWithEmail(email, password, name, cargo, setor);
       }
     } catch (err: any) {
       console.error(err);
@@ -101,20 +103,51 @@ export function LoginView() {
             </AnimatePresence>
 
             {mode === 'register' && (
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-black uppercase tracking-widest text-ork-text-muted ml-1">Nome Completo</label>
-                <div className="relative group">
-                  <User className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-ork-text-muted group-focus-within:text-ork-primary transition-colors" />
-                  <input 
-                    type="text" 
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    placeholder="Seu nome"
-                    className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 pl-12 pr-4 text-sm focus:outline-none focus:border-ork-primary focus:bg-white/[0.07] transition-all"
-                    required
-                  />
+              <>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-black uppercase tracking-widest text-ork-text-muted ml-1">Nome Completo</label>
+                  <div className="relative group">
+                    <User className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-ork-text-muted group-focus-within:text-ork-primary transition-colors" />
+                    <input 
+                      type="text" 
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      placeholder="Seu nome"
+                      className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 pl-12 pr-4 text-sm focus:outline-none focus:border-ork-primary focus:bg-white/[0.07] transition-all"
+                      required
+                    />
+                  </div>
                 </div>
-              </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-black uppercase tracking-widest text-ork-text-muted ml-1">Cargo / Função</label>
+                    <div className="relative group">
+                      <input 
+                        type="text" 
+                        value={cargo}
+                        onChange={(e) => setCargo(e.target.value)}
+                        placeholder="Ex: Motorista"
+                        className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-4 text-sm focus:outline-none focus:border-ork-primary focus:bg-white/[0.07] transition-all"
+                        required
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-black uppercase tracking-widest text-ork-text-muted ml-1">Setor</label>
+                    <div className="relative group">
+                      <input 
+                        type="text" 
+                        value={setor}
+                        onChange={(e) => setSetor(e.target.value)}
+                        placeholder="Ex: Logística"
+                        className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-4 text-sm focus:outline-none focus:border-ork-primary focus:bg-white/[0.07] transition-all"
+                        required
+                      />
+                    </div>
+                  </div>
+                </div>
+              </>
             )}
 
             <div className="space-y-1.5">
@@ -183,7 +216,8 @@ export function LoginView() {
 
         <p className="text-center mt-8 text-[10px] text-ork-text-muted font-bold uppercase tracking-[0.2em] leading-relaxed">
           Gerenciado por <span className="text-white">Orkestria OS Framework</span><br />
-          Sistemas Críticos & Missão de Frota
+          Sistemas Críticos & Missão de Frota<br />
+          <span className="text-white/30 text-[8px] mt-2 block">Versão 001.001.004</span>
         </p>
       </motion.div>
     </div>

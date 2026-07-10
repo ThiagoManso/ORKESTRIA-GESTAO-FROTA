@@ -4,6 +4,8 @@ export interface UserProfile {
   role: UserRole;
   status: 'active' | 'inactive' | 'pending';
   name?: string;
+  cargo?: string;
+  setor?: string;
   createdAt: any;
   lastLocation?: { lat: number, lng: number, speed?: number | null };
   locationUpdatedAt?: any;

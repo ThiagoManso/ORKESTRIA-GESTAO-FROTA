@@ -325,9 +325,16 @@ export function UserManagementView() {
                   )}
                   {u.uid === currentUser?.uid && <span className="text-[8px] font-black bg-ork-primary text-white px-1.5 py-0.5 rounded-sm shrink-0">VOCÊ</span>}
                 </div>
-                <div className="flex items-center gap-2 text-ork-text-muted">
-                  <Mail className="w-3 h-3" />
-                  <p className="text-xs truncate">{u.email}</p>
+                <div className="flex flex-col gap-1 mt-1">
+                  <div className="flex items-center gap-2 text-ork-text-muted">
+                    <Mail className="w-3 h-3" />
+                    <p className="text-xs truncate">{u.email}</p>
+                  </div>
+                  {(u.cargo || u.setor) && (
+                    <div className="flex items-center gap-2 text-[10px] font-bold text-white/50 uppercase tracking-widest truncate">
+                      {u.cargo} {u.cargo && u.setor && '•'} {u.setor}
+                    </div>
+                  )}
                 </div>
               </div>
               {u.uid !== currentUser?.uid && (
@@ -420,9 +427,16 @@ export function UserManagementView() {
                     </div>
                     <div>
                       <h3 className="text-lg font-black text-white tracking-tight">{u.name || u.email.split('@')[0]}</h3>
-                      <div className="flex items-center gap-2 text-ork-text-muted">
-                        <Mail className="w-3 h-3" />
-                        <p className="text-xs">{u.email}</p>
+                      <div className="flex flex-col gap-1 mt-1">
+                        <div className="flex items-center gap-2 text-ork-text-muted">
+                          <Mail className="w-3 h-3" />
+                          <p className="text-xs">{u.email}</p>
+                        </div>
+                        {(u.cargo || u.setor) && (
+                          <div className="flex items-center gap-2 text-[10px] font-bold text-white/50 uppercase tracking-widest truncate">
+                            {u.cargo} {u.cargo && u.setor && '•'} {u.setor}
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -489,9 +503,16 @@ export function UserManagementView() {
                       </h3>
                       <span className="text-[8px] bg-red-500/20 text-red-500 border border-red-500/30 px-1.5 py-0.5 rounded-sm uppercase font-black">Inativo</span>
                     </div>
-                    <div className="flex items-center gap-2 text-ork-text-muted">
-                      <Mail className="w-3 h-3" />
-                      <p className="text-xs truncate">{u.email}</p>
+                    <div className="flex flex-col gap-1 mt-1">
+                      <div className="flex items-center gap-2 text-ork-text-muted">
+                        <Mail className="w-3 h-3" />
+                        <p className="text-xs truncate">{u.email}</p>
+                      </div>
+                      {(u.cargo || u.setor) && (
+                        <div className="flex items-center gap-2 text-[10px] font-bold text-white/50 uppercase tracking-widest truncate">
+                          {u.cargo} {u.cargo && u.setor && '•'} {u.setor}
+                        </div>
+                      )}
                     </div>
                   </div>
                   <div className="flex gap-2">

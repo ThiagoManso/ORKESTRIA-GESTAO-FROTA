@@ -10,7 +10,9 @@ import {
   deleteDoc,
   orderBy,
   setDoc,
-  writeBatch
+  writeBatch,
+  getDoc,
+  getDocs
 } from 'firebase/firestore';
 import { db } from './firebase';
 import { Vehicle, MaintenanceRecord, MaintenanceSchedule, VehicleLog, Checklist, Driver, Fine, CollectionRequest, UserProfile, UserRole, GlobalSettings, PurchaseRequest } from '../types';
@@ -495,8 +497,8 @@ export const userService = {
     }
   },
 
-  ensureProfileExists: async (uid: string, email: string, name?: string) => {
-    const { getDoc, setDoc, updateDoc, query, collection, where, getDocs, deleteDoc } = await import('firebase/firestore');
+  ensureProfileExists: async (uid: string, email: string, name?: string, cargo?: string, setor?: string) => {
+    
     const userDocRef = doc(db, 'users', uid);
     const lowerEmail = email.toLowerCase();
     
@@ -569,6 +571,8 @@ export const userService = {
         uid,
         email: lowerEmail,
         name: name || invitedName || '',
+        cargo: cargo || '',
+        setor: setor || '',
         role: initialRole,
         status: (invitedRole || initialRole === 'admin') ? 'active' : 'pending',
         createdAt: serverTimestamp(),
@@ -584,14 +588,20 @@ export const userService = {
     const shouldBeAdmin = lowerEmail === 'thiago.altriman.man@gmail.com';
     const targetRole = invitedRole || (shouldBeAdmin ? 'admin' as UserRole : currentData.role);
 
+    
+    const updates: any = {};
     if (currentData.role !== targetRole) {
       console.log(`[userService] Sincronizando role do usuário: ${currentData.role} -> ${targetRole}`);
-      await updateDoc(userDocRef, { 
-        role: targetRole,
-        updatedAt: serverTimestamp(),
-        ...(name && !currentData.name ? { name } : {})
-      });
-      if (invitedRole && inviteSnap && !inviteSnap.empty) {
+      updates.role = targetRole;
+    }
+    if (name && !currentData.name) updates.name = name;
+    if (cargo && !currentData.cargo) updates.cargo = cargo;
+    if (setor && !currentData.setor) updates.setor = setor;
+
+    if (Object.keys(updates).length > 0) {
+      updates.updatedAt = serverTimestamp();
+      await updateDoc(userDocRef, updates);
+      if (currentData.role !== targetRole && invitedRole && inviteSnap && !inviteSnap.empty) {
         await deleteDoc(inviteSnap.docs[0].ref).catch(console.error);
       }
     }
@@ -600,7 +610,7 @@ export const userService = {
 
   inviteUser: async (email: string, role: UserRole, name?: string) => {
     try {
-      const { setDoc, getDocs, query, collection, where } = await import('firebase/firestore');
+      
       const lowerEmail = email.toLowerCase();
       
       // Strict uniqueness check
@@ -666,7 +676,7 @@ export const userService = {
 
   checkEmailExists: async (email: string) => {
     try {
-      const { getDocs, query, collection, where } = await import('firebase/firestore');
+      
       const lowerEmail = email.toLowerCase();
       
       const userSnap = await getDocs(query(collection(db, 'users'), where('email', '==', lowerEmail)));
@@ -699,7 +709,7 @@ export const userService = {
   },
 
   updateLocation: async (uid: string, lat: number, lng: number, speed?: number | null) => {
-    const { updateDoc, serverTimestamp } = await import('firebase/firestore');
+    
     try {
       await updateDoc(doc(db, 'users', uid), {
         lastLocation: { lat, lng, speed: speed || 0 },

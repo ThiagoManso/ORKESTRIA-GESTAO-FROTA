@@ -1,16 +1,10 @@
 const fs = require('fs');
 let code = fs.readFileSync('src/lib/AuthContext.tsx', 'utf8');
 
-const target = `            if (p?.status === 'inactive') {`;
-const replacement = `            if (p?.status === 'pending') {
-              setProfile(null);
-              setUser(null);
-              signOut(auth);
-              alert('Sua conta está aguardando aprovação do administrador. Você receberá acesso assim que for liberada.');
-              setLoading(false);
-              return;
-            }
-            if (p?.status === 'inactive') {`;
+if (!code.includes('GoogleAuthProvider')) {
+  code = code.replace(/import \{ User, onAuthStateChanged, signInWithPopup, signOut \} from 'firebase\/auth';/, "import { User, onAuthStateChanged, signInWithPopup, signOut, GoogleAuthProvider, signInWithEmailAndPassword, createUserWithEmailAndPassword, updateProfile } from 'firebase/auth';");
+}
 
-code = code.replace(target, replacement);
+code = code.replace(/const \{ [^\}]+ \} = await import\('firebase\/auth'\);/g, '');
+
 fs.writeFileSync('src/lib/AuthContext.tsx', code);

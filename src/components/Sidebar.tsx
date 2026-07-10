@@ -139,6 +139,12 @@ export function Sidebar({ activeTab, setActiveTab, isCollapsed, setIsCollapsed }
             <LogOut className="w-4 h-4 shrink-0" />
             <span>Desconectar</span>
           </button>
+          
+          <div className="mt-6 text-center">
+            <p className="text-[9px] font-bold text-ork-text-muted/50 uppercase tracking-[0.3em]">
+              Versão 001.001.004
+            </p>
+          </div>
         </div>
       </motion.aside>
     </>

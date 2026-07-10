@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { User, onAuthStateChanged, signInWithPopup, signOut } from 'firebase/auth';
+import { User, onAuthStateChanged, signInWithPopup, signOut, GoogleAuthProvider, signInWithEmailAndPassword, createUserWithEmailAndPassword, updateProfile } from 'firebase/auth';
 import { auth } from './firebase';
 import { userService } from './services';
 import { UserProfile } from '../types';
@@ -10,7 +10,7 @@ interface AuthContextType {
   loading: boolean;
   login: () => Promise<void>;
   loginWithEmail: (email: string, pass: string) => Promise<void>;
-  registerWithEmail: (email: string, pass: string, name: string) => Promise<void>;
+  registerWithEmail: (email: string, pass: string, name: string, cargo?: string, setor?: string) => Promise<void>;
   logout: () => Promise<void>;
 }
 
@@ -75,7 +75,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           });
 
           // Safety timeout - if profile doesn't load in 5 seconds, stop blocking
-          setTimeout(() => setLoading(false), 5000);
+          setTimeout(() => setLoading(false), 2000);
         } else {
           setProfile(null);
           setLoading(false);
@@ -96,21 +96,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const login = async () => {
-    const { GoogleAuthProvider } = await import('firebase/auth');
+    
     const provider = new GoogleAuthProvider();
     await signInWithPopup(auth, provider);
   };
 
   const loginWithEmail = async (email: string, pass: string) => {
-    const { signInWithEmailAndPassword } = await import('firebase/auth');
+    
     await signInWithEmailAndPassword(auth, email, pass);
   };
 
-  const registerWithEmail = async (email: string, pass: string, name: string) => {
-    const { createUserWithEmailAndPassword, updateProfile } = await import('firebase/auth');
+  const registerWithEmail = async (email: string, pass: string, name: string, cargo?: string, setor?: string) => {
+    
     const userCredential = await createUserWithEmailAndPassword(auth, email, pass);
     await updateProfile(userCredential.user, { displayName: name });
-    // The ensureProfileExists will be triggered by onAuthStateChanged
+    await userService.ensureProfileExists(userCredential.user.uid, email, name, cargo, setor);
+    // The ensureProfileExists will be triggered by onAuthStateChanged but we call it explicitly to pass extra fields
   };
 
   const logout = async () => {
