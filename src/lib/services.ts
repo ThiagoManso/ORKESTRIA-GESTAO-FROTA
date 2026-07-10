@@ -563,18 +563,7 @@ export const userService = {
         initialRole = 'admin';
       }
       
-      const { limit } = await import('firebase/firestore');
-      // If no invite and not specifically overridden, check if it's the very first user
-      if (!invitedRole && initialRole === 'driver') {
-        try {
-          const allUsersSnap = await getDocs(query(collection(db, 'users'), limit(1)));
-          if (allUsersSnap.empty) {
-            initialRole = 'admin';
-          }
-        } catch (e) {
-          console.warn("Could not check if first user:", e);
-        }
-      }
+
 
       await setDoc(userDocRef, {
         uid,

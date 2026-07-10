@@ -41,6 +41,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           
           // Subscribe to profile changes immediately
           unsubscribeProfile = userService.getUserProfile(user.uid, (p) => {
+            if (p?.status === 'pending') {
+              setProfile(null);
+              setUser(null);
+              signOut(auth);
+              alert('Sua conta está aguardando aprovação do administrador. Você receberá acesso assim que for liberada.');
+              setLoading(false);
+              return;
+            }
             if (p?.status === 'inactive') {
               setProfile(null);
               setUser(null);
