@@ -33,6 +33,47 @@ export default function DriverViewPage({ driverId, driverName, driverStatus }: D
     }
   }, []);
 
+  const lastLocationRef = React.useRef<{lat: number, lng: number} | null>(null);
+
+  useEffect(() => {
+    let watchId: number;
+    let syncInterval: NodeJS.Timeout;
+
+    if ((driverStatus === 'active' || driverStatus === 'on_route') && driverId && navigator.geolocation) {
+      watchId = navigator.geolocation.watchPosition((position) => {
+        lastLocationRef.current = {
+          lat: position.coords.latitude,
+          lng: position.coords.longitude
+        };
+      }, (error) => {
+        console.warn("Erro ao obter localização do GPS:", error);
+      }, {
+        enableHighAccuracy: true,
+        maximumAge: 10000,
+        timeout: 10000
+      });
+
+      // Otimização: Só manda para o banco a cada 30 segundos, não a cada metro
+      syncInterval = setInterval(async () => {
+        if (lastLocationRef.current) {
+          try {
+            await updateDoc(doc(db, 'drivers', driverId), {
+              location: lastLocationRef.current,
+              locationUpdatedAt: new Date().toISOString()
+            });
+          } catch (e) {
+            console.error("Erro ao sincronizar localização:", e);
+          }
+        }
+      }, 30000);
+    }
+
+    return () => {
+      if (watchId) navigator.geolocation.clearWatch(watchId);
+      if (syncInterval) clearInterval(syncInterval);
+    };
+  }, [driverStatus, driverId]);
+
   const enableNotifications = async () => {
     try {
       const permission = await Notification.requestPermission();

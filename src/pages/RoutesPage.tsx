@@ -27,6 +27,7 @@ const formatRouteId = (route: RouteItem | null) => {
 
 export default function RoutesPage() {
   const { data: routes, loading, add, update, remove } = useCollection<RouteItem>('routes');
+  const { data: drivers } = useCollection<any>('drivers');
   const [matrizAddress, setMatrizAddress] = useState<string>('');
 
   useEffect(() => {
@@ -405,10 +406,9 @@ export default function RoutesPage() {
                     className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:border-primary focus:ring-1 focus:ring-primary shadow-sm"
                   >
                     <option value="">Aguardando entregador...</option>
-                    <option value="Edvaldo">Edvaldo Nascimento</option>
-                    <option value="Juraci">Juraci Silva</option>
-                    <option value="Alexandre">Alexandre Santos</option>
-                    <option value="Thais">Thais Bezerra</option>
+                    {drivers?.filter((d: any) => d.status === 'active' || d.status === 'on_route').map((d: any) => (
+                      <option key={d.id} value={d.name}>{d.name}</option>
+                    ))}
                   </select>
                 </div>
                 
@@ -811,11 +811,9 @@ export default function RoutesPage() {
                     className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:border-primary focus:ring-1 focus:ring-primary shadow-sm"
                   >
                     <option value="Aguardando">Aguardando entregador...</option>
-                    <option value="Edvaldo">Edvaldo Nascimento</option>
-                    <option value="Juraci">Juraci Silva</option>
-                    <option value="Alexandre">Alexandre Santos</option>
-                    <option value="Thais">Thais Bezerra</option>
-                    <option value="João">João</option>
+                    {drivers?.filter((d: any) => d.status === 'active' || d.status === 'on_route').map((d: any) => (
+                      <option key={d.id} value={d.name}>{d.name}</option>
+                    ))}
                   </select>
                 </div>
                 
