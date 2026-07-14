@@ -2,19 +2,31 @@ import React, { useState, useEffect } from 'react';
 import { RouteItem } from '../types';
 import { useCollection } from '../lib/useCollection';
 import { MapPin, CheckCircle, AlertTriangle, Truck, Navigation, Package, XCircle, LogOut, BellRing } from 'lucide-react';
-import { auth, messaging } from '../lib/firebase';
+import { auth, messaging, db } from '../lib/firebase';
 import { signOut } from 'firebase/auth';
 import { getToken, onMessage } from 'firebase/messaging';
+import { doc, updateDoc } from 'firebase/firestore';
 
 interface DriverViewPageProps {
   driverId?: string;
   driverName?: string;
+  driverStatus?: string;
 }
 
-export default function DriverViewPage({ driverId, driverName }: DriverViewPageProps) {
+export default function DriverViewPage({ driverId, driverName, driverStatus }: DriverViewPageProps) {
   const { data: routes, update } = useCollection<RouteItem>('routes');
   const [notificationStatus, setNotificationStatus] = useState<string>('default');
   
+  const toggleOnlineStatus = async () => {
+    if (!driverId) return;
+    const newStatus = driverStatus === 'active' ? 'offline' : 'active';
+    try {
+      await updateDoc(doc(db, 'drivers', driverId), { status: newStatus });
+    } catch (error) {
+      console.error("Error updating status", error);
+    }
+  };
+
   useEffect(() => {
     if ('Notification' in window) {
       setNotificationStatus(Notification.permission);
@@ -207,9 +219,18 @@ export default function DriverViewPage({ driverId, driverName }: DriverViewPageP
           <h1 className="text-xl font-bold text-slate-800">Orkestria Entregador</h1>
           <p className="text-sm text-slate-500">Olá, {driverName?.split(' ')[0] || 'Motorista'}</p>
         </div>
-        <button onClick={() => signOut(auth)} className="w-10 h-10 bg-slate-100 rounded-full flex items-center justify-center text-slate-500 hover:bg-slate-200 transition-colors">
-          <LogOut size={20} />
-        </button>
+        <div className="flex items-center gap-3">
+          <button 
+            onClick={toggleOnlineStatus}
+            className={`px-4 py-2 rounded-full font-bold text-sm transition-colors flex items-center gap-2 ${driverStatus === 'active' || driverStatus === 'on_route' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}
+          >
+            <div className={`w-2 h-2 rounded-full ${driverStatus === 'active' || driverStatus === 'on_route' ? 'bg-emerald-500' : 'bg-slate-400'}`} />
+            {driverStatus === 'active' || driverStatus === 'on_route' ? 'Online' : 'Offline'}
+          </button>
+          <button onClick={() => signOut(auth)} className="w-10 h-10 bg-slate-100 rounded-full flex items-center justify-center text-slate-500 hover:bg-slate-200 transition-colors">
+            <LogOut size={20} />
+          </button>
+        </div>
       </div>
 
       <div className="p-4 flex-1">

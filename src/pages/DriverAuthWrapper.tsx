@@ -245,5 +245,5 @@ export default function DriverAuthWrapper() {
     );
   }
 
-  return <DriverViewPage driverId={driverData?.id} driverName={driverData?.name} />;
+  return <DriverViewPage driverId={driverData?.id} driverName={driverData?.name} driverStatus={driverData?.status} />;
 }
