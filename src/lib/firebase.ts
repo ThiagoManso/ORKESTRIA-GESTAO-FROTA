@@ -5,7 +5,7 @@ import { getAuth } from 'firebase/auth';
 const firebaseConfig = {
   projectId: "orkestria-os-gestao-de-frota",
   appId: "1:23796532338:web:c6dfa3903bc060359eeeeb",
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "AIzaSyDxhehxMBvx5C8TbfaKr25iaBRzT0B-pf8",
+  apiKey: (import.meta as any).env?.VITE_FIREBASE_API_KEY || "AIzaSyDxhehxMBvx5C8TbfaKr25iaBRzT0B-pf8",
   authDomain: "orkestria-os-gestao-de-frota.firebaseapp.com",
   storageBucket: "orkestria-os-gestao-de-frota.firebasestorage.app",
   messagingSenderId: "23796532338"

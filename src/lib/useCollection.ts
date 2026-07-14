@@ -26,7 +26,7 @@ export function useCollection<T>(collectionName: string) {
 
   const update = async (id: string, item: Partial<T>) => {
     const docRef = doc(db, collectionName, id);
-    return await updateDoc(docRef, item);
+    return await updateDoc(docRef, item as any);
   };
 
   const remove = async (id: string) => {

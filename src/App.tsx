@@ -25,6 +25,8 @@ const hasValidKey = Boolean(API_KEY) && API_KEY !== 'YOUR_API_KEY';
 export default function App() {
   const [isExternal, setIsExternal] = useState(false);
   const [isDriver, setIsDriver] = useState(false);
+  const [currentView, setCurrentView] = useState<ViewState>('dashboard');
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -51,8 +53,6 @@ export default function App() {
       </APIProvider>
     );
   }
-  const [currentView, setCurrentView] = useState<ViewState>('dashboard');
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   if (!hasValidKey) {
     return (
