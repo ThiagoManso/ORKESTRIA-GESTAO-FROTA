@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { RouteItem } from '../types';
 import { useCollection } from '../lib/useCollection';
-import { MapPin, CheckCircle, AlertTriangle, Truck, Navigation, Package, XCircle, LogOut } from 'lucide-react';
-import { auth } from '../lib/firebase';
+import { MapPin, CheckCircle, AlertTriangle, Truck, Navigation, Package, XCircle, LogOut, BellRing } from 'lucide-react';
+import { auth, messaging } from '../lib/firebase';
 import { signOut } from 'firebase/auth';
+import { getToken, onMessage } from 'firebase/messaging';
 
 interface DriverViewPageProps {
   driverId?: string;
@@ -12,6 +13,47 @@ interface DriverViewPageProps {
 
 export default function DriverViewPage({ driverId, driverName }: DriverViewPageProps) {
   const { data: routes, update } = useCollection<RouteItem>('routes');
+  const [notificationStatus, setNotificationStatus] = useState<string>('default');
+  
+  useEffect(() => {
+    if ('Notification' in window) {
+      setNotificationStatus(Notification.permission);
+    }
+  }, []);
+
+  const enableNotifications = async () => {
+    try {
+      const permission = await Notification.requestPermission();
+      setNotificationStatus(permission);
+      
+      if (permission === 'granted') {
+        const msg = await messaging();
+        if (msg) {
+          // If you have a VAPID key from Firebase Console, put it here:
+          // const token = await getToken(msg, { vapidKey: 'YOUR_VAPID_KEY' });
+          const token = await getToken(msg);
+          console.log('FCM Token:', token);
+          
+          onMessage(msg, (payload) => {
+            console.log('Message received. ', payload);
+            if (payload.notification) {
+               new Notification(payload.notification.title || 'Nova Notificação', {
+                 body: payload.notification.body,
+                 icon: '/icon.png'
+               });
+            }
+          });
+          
+          alert('Notificações ativadas com sucesso!');
+        } else {
+          alert('Este navegador não suporta notificações Push.');
+        }
+      }
+    } catch (error) {
+      console.error('Erro ao ativar notificações:', error);
+      alert('Erro ao ativar notificações. Verifique as configurações do navegador.');
+    }
+  };
   
   // Find if there's any route in progress
   const activeRoute = routes?.find(r => r.status === 'in_progress' && r.driver === driverName);
@@ -85,6 +127,25 @@ export default function DriverViewPage({ driverId, driverName }: DriverViewPageP
         </div>
 
         <div className="flex-1 p-4 space-y-4">
+          {notificationStatus === 'default' && (
+            <div className="mb-6 bg-gradient-to-r from-blue-500 to-cyan-500 rounded-2xl p-4 text-white shadow-md flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-white/20 rounded-full">
+                  <BellRing size={20} className="text-white" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-sm">Ative as Notificações</h3>
+                  <p className="text-xs text-blue-100 mt-0.5">Receba alertas em tempo real</p>
+                </div>
+              </div>
+              <button 
+                onClick={enableNotifications}
+                className="px-4 py-2 bg-white text-blue-600 rounded-xl font-bold text-sm shadow-sm active:scale-95 transition-transform"
+              >
+                Ativar
+              </button>
+            </div>
+          )}
           <h2 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-2">Paradas</h2>
           {activeRoute.stopDetails?.map((stop, index) => {
             const isCompleted = stop.status === 'completed';
@@ -152,6 +213,26 @@ export default function DriverViewPage({ driverId, driverName }: DriverViewPageP
       </div>
 
       <div className="p-4 flex-1">
+        {notificationStatus === 'default' && (
+          <div className="mb-6 bg-gradient-to-r from-blue-500 to-cyan-500 rounded-2xl p-4 text-white shadow-md flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-white/20 rounded-full">
+                <BellRing size={20} className="text-white" />
+              </div>
+              <div>
+                <h3 className="font-bold text-sm">Ative as Notificações</h3>
+                <p className="text-xs text-blue-100 mt-0.5">Receba alertas de novas rotas</p>
+              </div>
+            </div>
+            <button 
+              onClick={enableNotifications}
+              className="px-4 py-2 bg-white text-blue-600 rounded-xl font-bold text-sm shadow-sm active:scale-95 transition-transform"
+            >
+              Ativar
+            </button>
+          </div>
+        )}
+
         <h2 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-4 flex items-center gap-2">
           <Package size={16} /> Novas Rotas Disponíveis
         </h2>
