@@ -1,6 +1,6 @@
 {
-  "name": "Orkestria OS Brass",
-  "description": "Logística avançada com roteirização inteligente, monitoramento GPS em tempo real, atribuição dinâmica de motoristas e acompanhamento de ETAs para coletas e entregas.",
-  "requestFramePermissions": ["geolocation"],
+  "name": "ORKESTRIA OS BRASS",
+  "description": "Delivery Management Platform",
+  "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

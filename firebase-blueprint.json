@@ -1,211 +1,36 @@
 {
-  "entities": {
-    "CollectionRequest": {
-      "title": "Configurable collection requests",
-      "description": "Requests for item collection distributed to drivers",
-      "type": "object",
-      "properties": {
-        "title": { "type": "string" },
-        "address": { "type": "string" },
-        "lat": { "type": "number" },
-        "lng": { "type": "number" },
-        "status": { "type": "string", "enum": ["pending", "assigned", "accepted", "refused", "completed", "delivered_manual"] },
-        "type": { "type": "string", "enum": ["coleta", "entrega"] },
-        "assignedDriverId": { "type": "string" },
-        "assignedVehicleId": { "type": "string" },
-        "refusalReason": { "type": "string" },
-        "priority": { "type": "string", "enum": ["low", "medium", "high"] },
-        "scheduledDate": { "type": "string" },
-        "observations": { "type": "string" },
-        "ownerId": { "type": "string" }
-      },
-      "required": ["title", "address", "status", "ownerId", "type"]
+  "collections": [
+    {
+      "name": "routes",
+      "description": "Delivery routes",
+      "rules": [
+        "read: if true",
+        "write: if true"
+      ]
     },
-    "Vehicle": {
-      "title": "Vehicle",
-      "description": "Details about a vehicle in the fleet",
-      "type": "object",
-      "properties": {
-        "id": { "type": "string", "description": "Unique identifier" },
-        "plate": { "type": "string", "description": "License plate" },
-        "brand": { "type": "string", "description": "Manufacturer" },
-        "model": { "type": "string", "description": "Model name" },
-        "year": { "type": "number", "description": "Manufacture year" },
-        "currentMileage": { "type": "number", "description": "Last recorded mileage" },
-        "status": { "type": "string", "enum": ["active", "maintenance", "inactive"] },
-        "maintenanceStartDate": { "type": "string", "format": "date-time" },
-        "ownerId": { "type": "string", "description": "UID of the user who owns this vehicle" },
-        "createdAt": { "type": "string", "format": "date-time" },
-        "updatedAt": { "type": "string", "format": "date-time" }
-      },
-      "required": ["plate", "brand", "model", "ownerId"]
+    {
+      "name": "drivers",
+      "description": "Delivery drivers",
+      "rules": [
+        "read: if true",
+        "write: if true"
+      ]
     },
-    "MaintenanceRecord": {
-      "title": "Maintenance Record",
-      "description": "History of services performed on a vehicle",
-      "type": "object",
-      "properties": {
-        "id": { "type": "string" },
-        "vehicleId": { "type": "string" },
-        "date": { "type": "string", "format": "date-time" },
-        "type": { "type": "string", "enum": ["preventive", "corrective"] },
-        "description": { "type": "string" },
-        "cost": { "type": "number" },
-        "mileageAtService": { "type": "number" },
-        "washedVehicle": { "type": "boolean" },
-        "ownerId": { "type": "string" },
-        "createdAt": { "type": "string", "format": "date-time" }
-      },
-      "required": ["vehicleId", "date", "type", "cost", "ownerId"]
+    {
+      "name": "vehicles",
+      "description": "Fleet vehicles",
+      "rules": [
+        "read: if true",
+        "write: if true"
+      ]
     },
-    "Driver": {
-      "title": "Driver",
-      "description": "Details about a fleet driver",
-      "type": "object",
-      "properties": {
-        "id": { "type": "string" },
-        "name": { "type": "string" },
-        "licenseNumber": { "type": "string" },
-        "licenseCategory": { "type": "string" },
-        "licenseExpiry": { "type": "string", "format": "date" },
-        "phone": { "type": "string" },
-        "status": { "type": "string", "enum": ["active", "inactive"] },
-        "ownerId": { "type": "string" }
-      },
-      "required": ["name", "licenseNumber", "ownerId"]
-    },
-    "Fine": {
-      "title": "Traffic Fine",
-      "description": "Traffic violation record",
-      "type": "object",
-      "properties": {
-        "id": { "type": "string" },
-        "vehicleId": { "type": "string" },
-        "driverId": { "type": "string" },
-        "date": { "type": "string", "format": "date" },
-        "amount": { "type": "number" },
-        "description": { "type": "string" },
-        "status": { "type": "string", "enum": ["pending", "paid", "appealing"] },
-        "ownerId": { "type": "string" }
-      },
-      "required": ["vehicleId", "driverId", "amount", "date", "ownerId"]
-    },
-    "MaintenanceSchedule": {
-      "title": "Maintenance Schedule",
-      "description": "Upcoming scheduled services or preventive alerts",
-      "type": "object",
-      "properties": {
-        "id": { "type": "string" },
-        "vehicleId": { "type": "string" },
-        "serviceType": { "type": "string" },
-        "scheduledDate": { "type": "string", "format": "date-time" },
-        "targetMileage": { "type": "number" },
-        "status": { "type": "string", "enum": ["pending", "completed", "overdue"] },
-        "ownerId": { "type": "string" }
-      },
-      "required": ["vehicleId", "serviceType", "status", "ownerId"]
-    },
-    "VehicleLog": {
-      "title": "Vehicle Log",
-      "description": "Tracking usage of vehicles",
-      "type": "object",
-      "properties": {
-        "id": { "type": "string" },
-        "vehicleId": { "type": "string" },
-        "driverName": { "type": "string" },
-        "startTime": { "type": "string", "format": "date-time" },
-        "endTime": { "type": "string", "format": "date-time" },
-        "startMileage": { "type": "number" },
-        "endMileage": { "type": "number" },
-        "purpose": { "type": "string" },
-        "currentLat": { "type": "number" },
-        "currentLng": { "type": "number" },
-        "status": { "type": "string", "enum": ["active", "completed"] },
-        "ownerId": { "type": "string" }
-      },
-      "required": ["vehicleId", "driverName", "startTime", "startMileage", "status", "ownerId"]
-    },
-    "UserProfile": {
-      "title": "User Profile",
-      "description": "Extended user information including roles",
-      "type": "object",
-      "properties": {
-        "uid": { "type": "string" },
-        "email": { "type": "string" },
-        "role": { "type": "string", "enum": ["admin", "driver"] },
-        "status": { "type": "string", "enum": ["active", "inactive"] },
-        "name": { "type": "string" },
-        "createdAt": { "type": "string", "format": "date-time" }
-      },
-      "required": ["uid", "email", "role"]
-    },
-    "Checklist": {
-      "title": "Checklist",
-      "description": "Pre-departure vehicle inspection",
-      "type": "object",
-      "properties": {
-        "id": { "type": "string" },
-        "logId": { "type": "string", "description": "Linked usage log" },
-        "vehicleId": { "type": "string" },
-        "items": { "type": "object" },
-        "fuelLevel": { "type": "string" },
-        "observations": { "type": "string" },
-        "ownerId": { "type": "string" },
-        "createdAt": { "type": "string", "format": "date-time" }
-      },
-      "required": ["vehicleId", "items", "ownerId"]
-    },
-    "GlobalSettings": {
-      "title": "Global Settings",
-      "description": "System-wide application settings",
-      "type": "object",
-      "properties": {
-        "headquarterAddress": { "type": "string" },
-        "updatedAt": { "type": "string", "format": "date-time" }
-      },
-      "required": ["headquarterAddress"]
+    {
+      "name": "settings",
+      "description": "System settings",
+      "rules": [
+        "read: if true",
+        "write: if true"
+      ]
     }
-  },
-  "firestore": {
-    "users/{userId}": {
-      "schema": "UserProfile",
-      "description": "User profile data and roles"
-    },
-    "collection_requests/{requestId}": {
-      "schema": "CollectionRequest",
-      "description": "Collection tasks for drivers"
-    },
-    "drivers/{driverId}": {
-      "schema": "Driver",
-      "description": "Fleet drivers"
-    },
-    "fines/{fineId}": {
-      "schema": "Fine",
-      "description": "Vehicle fines"
-    },
-    "vehicles/{vehicleId}": {
-      "schema": "Vehicle",
-      "description": "Collection of fleet vehicles"
-    },
-    "maintenance_records/{recordId}": {
-      "schema": "MaintenanceRecord",
-      "description": "History of all maintenance operations"
-    },
-    "maintenance_schedules/{scheduleId}": {
-      "schema": "MaintenanceSchedule",
-      "description": "Planned maintenance tasks"
-    },
-    "vehicle_logs/{logId}": {
-      "schema": "VehicleLog",
-      "description": "Usage history"
-    },
-    "checklists/{checklistId}": {
-      "schema": "Checklist",
-      "description": "Pre-trip inspections"
-    },
-    "settings/{settingId}": {
-      "schema": "GlobalSettings",
-      "description": "Global application configurations"
-    }
-  }
+  ]
 }
