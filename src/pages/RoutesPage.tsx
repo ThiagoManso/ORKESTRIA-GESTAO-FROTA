@@ -68,56 +68,50 @@ export default function RoutesPage() {
   const calculateRouteData = async (routeData: any) => {
     if (!routesLib || !routeData.origin || !routeData.destination) return null;
     try {
+      const directionsService = new routesLib.DirectionsService();
+      const waypoints = (routeData.intermediates || [])
+        .filter((addr: string) => addr.trim() !== '')
+        .map((addr: string) => ({ location: addr, stopover: true }));
+
       const request: any = {
         origin: routeData.origin,
         destination: routeData.destination,
-        travelMode: 'DRIVING',
-        fields: ['distanceMeters', 'durationMillis', 'optimizedIntermediateWaypointIndices'],
+        travelMode: google.maps.TravelMode.DRIVING,
+        waypoints: waypoints,
+        optimizeWaypoints: routeData.optimizeOrder ?? true,
       };
 
       if (routeData.departureTime) {
         const depDate = new Date(routeData.departureTime);
-        if (depDate < new Date()) {
-          request.departureTime = new Date(Date.now() + 60000);
-        } else {
-          request.departureTime = depDate;
-        }
-        request.routingPreference = 'TRAFFIC_AWARE';
+        request.drivingOptions = {
+          departureTime: depDate < new Date() ? new Date(Date.now() + 60000) : depDate,
+          trafficModel: google.maps.TrafficModel.BEST_GUESS
+        };
       }
 
-      if (routeData.intermediates && routeData.intermediates.length > 0) {
-        request.intermediates = routeData.intermediates
-          .filter((addr: string) => addr.trim() !== '')
-          .map((addr: string) => ({ location: addr }));
-          
-        if (routeData.optimizeOrder ?? true) {
-          request.optimizeWaypointOrder = true;
-        }
-      }
+      const response = await directionsService.route(request);
+      const route = response.routes?.[0];
       
-      const response = await routesLib.Route.computeRoutes(request);
-      
-      const route = response.routes?.[0] as any;
       if (route) {
-        const distanceKm = (route.distanceMeters || 0) / 1000;
-        let durationSeconds = 0;
+        let totalDistance = 0;
+        let totalDuration = 0;
         
-        if (route.durationMillis) {
-          durationSeconds = Math.floor(route.durationMillis / 1000);
-        } else if (route.duration) {
-          durationSeconds = parseInt((route.duration as string || '0s').replace('s', ''));
-        }
-        
-        const hours = Math.floor(durationSeconds / 3600);
-        const minutes = Math.floor((durationSeconds % 3600) / 60);
+        route.legs.forEach((leg: any) => {
+          totalDistance += leg.distance?.value || 0;
+          totalDuration += leg.duration?.value || 0;
+        });
+
+        const distanceKm = totalDistance / 1000;
+        const hours = Math.floor(totalDuration / 3600);
+        const minutes = Math.floor((totalDuration % 3600) / 60);
         const formattedTime = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')} h`;
         
         let newIntermediates = routeData.intermediates || [];
-        if (route.optimizedIntermediateWaypointIndices && newIntermediates.length > 0) {
+        if (route.waypoint_order && route.waypoint_order.length > 0) {
           const original = newIntermediates.filter((addr: string) => addr.trim() !== '');
-          newIntermediates = route.optimizedIntermediateWaypointIndices.map((idx: number) => original[idx]);
+          newIntermediates = route.waypoint_order.map((idx: number) => original[idx]);
         }
-        
+
         return {
           intermediates: newIntermediates,
           distance: Number(distanceKm.toFixed(1)),
