@@ -13,7 +13,6 @@ import IssuesPage from './pages/IssuesPage';
 import MapPage from './pages/MapPage';
 import SettingsPage from './pages/SettingsPage';
 import { ViewState } from './types';
-import { seedDatabase } from './lib/seed';
 
 const API_KEY =
   process.env.GOOGLE_MAPS_PLATFORM_KEY ||
@@ -35,7 +34,6 @@ export default function App() {
     } else if (params.get('view') === 'driver') {
       setIsDriver(true);
     }
-    seedDatabase().catch(console.error);
   }, []);
 
   if (isExternal) {
