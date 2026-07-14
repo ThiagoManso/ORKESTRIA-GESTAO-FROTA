@@ -158,10 +158,10 @@ export default function MapPage() {
           </div>
         )}
 
-        {selectedRoute && (
+        {currentSelectedRoute && (
           <div className="absolute bottom-6 left-6 bg-white p-4 rounded-xl shadow-lg border border-slate-100 w-80">
             <div className="flex justify-between items-start mb-2">
-              <h3 className="font-bold text-slate-900">Rota #{selectedRoute.id}</h3>
+              <h3 className="font-bold text-slate-900">Rota #{currentSelectedRoute.id}</h3>
               <button 
                 onClick={() => setSelectedRoute(null)}
                 className="text-slate-400 hover:text-slate-600"
@@ -170,16 +170,16 @@ export default function MapPage() {
               </button>
             </div>
             <p className="text-sm text-slate-600 mb-1">
-              <span className="font-semibold">Entregador:</span> {selectedRoute.driver}
+              <span className="font-semibold">Entregador:</span> {currentSelectedRoute.driver}
             </p>
             <p className="text-sm text-slate-600 mb-1">
-              <span className="font-semibold">Paradas:</span> {selectedRoute.stops}
+              <span className="font-semibold">Paradas:</span> {currentSelectedRoute.stops}
             </p>
             <p className="text-sm text-slate-600 mb-3">
-              <span className="font-semibold">Distância:</span> {selectedRoute.distance} km
+              <span className="font-semibold">Distância:</span> {currentSelectedRoute.distance} km
             </p>
-            <div className="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-slate-50 text-slate-700 text-xs font-semibold rounded-lg w-full justify-center" style={{ backgroundColor: `${getMarkerColor(selectedRoute)}20`, color: getMarkerColor(selectedRoute) }}>
-              {getStatusText(selectedRoute)}
+            <div className="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-slate-50 text-slate-700 text-xs font-semibold rounded-lg w-full justify-center" style={{ backgroundColor: `${getMarkerColor(currentSelectedRoute)}20`, color: getMarkerColor(currentSelectedRoute) }}>
+              {getStatusText(currentSelectedRoute)}
             </div>
           </div>
         )}

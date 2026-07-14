@@ -66,7 +66,7 @@ export default function RoutesPage() {
   const routesLib = useMapsLibrary('routes');
 
   const calculateRouteData = async (routeData: any) => {
-    if (!routesLib || !routeData.origin || !routeData.destination) return null;
+    if (!routesLib || !routeData.origin || !routeData.destination) return { error: 'Preencha a origem e destino.' };
     try {
       const directionsService = new routesLib.DirectionsService();
       const waypoints = (routeData.intermediates || [])
@@ -76,7 +76,7 @@ export default function RoutesPage() {
       const request: any = {
         origin: routeData.origin,
         destination: routeData.destination,
-        travelMode: google.maps.TravelMode.DRIVING,
+        travelMode: 'DRIVING',
         waypoints: waypoints,
         optimizeWaypoints: routeData.optimizeOrder ?? true,
       };
@@ -85,7 +85,7 @@ export default function RoutesPage() {
         const depDate = new Date(routeData.departureTime);
         request.drivingOptions = {
           departureTime: depDate < new Date() ? new Date(Date.now() + 60000) : depDate,
-          trafficModel: google.maps.TrafficModel.BEST_GUESS
+          trafficModel: 'bestguess'
         };
       }
 
@@ -118,22 +118,23 @@ export default function RoutesPage() {
           estimatedTime: formattedTime
         };
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error calculating route:', error);
+      return { error: error?.message || error?.code || 'Erro desconhecido ao calcular a rota com a API do Google Maps.' };
     }
-    return null;
+    return { error: 'Nenhuma rota encontrada.' };
   };
 
   const calculateRoute = async () => {
     setIsCalculating(true);
     const data = await calculateRouteData(newRoute);
-    if (data) {
+    if (data && !data.error) {
       setNewRoute(prev => ({
         ...prev,
         ...data
       }));
     } else {
-      alert('Não foi possível calcular a rota com os endereços fornecidos.');
+      alert('Não foi possível calcular a rota com os endereços fornecidos. Erro: ' + (data?.error || ''));
     }
     setIsCalculating(false);
   };
@@ -147,12 +148,21 @@ export default function RoutesPage() {
     let finalIntermediates = newRoute.intermediates;
     
     // Always compute to ensure distance/time/order are correct before saving
-    if (routesLib && newRoute.origin && newRoute.destination) {
+    if (newRoute.distance > 0) {
+      // Já foi calculado antes pelo botão de calcular, vamos economizar API!
+      finalDistance = newRoute.distance;
+      finalEstimatedTime = newRoute.estimatedTime || '00:00 h';
+      finalIntermediates = newRoute.intermediates;
+    } else if (routesLib && newRoute.origin && newRoute.destination) {
       const data = await calculateRouteData(newRoute);
-      if (data) {
+      if (data && !data.error) {
         finalDistance = data.distance;
         finalEstimatedTime = data.estimatedTime;
         finalIntermediates = data.intermediates;
+      } else {
+        alert('Não foi possível calcular a rota com os endereços fornecidos. Erro: ' + (data?.error || ''));
+        setIsCalculating(false);
+        return; // Prevent saving the route if calculation fails
       }
     }
     setIsCalculating(false);
@@ -277,6 +287,8 @@ export default function RoutesPage() {
       setIsManageModalOpen(false);
     }
   };
+
+  const currentManageRoute = selectedRoute ? (routes.find(r => r.id === selectedRoute.id) || selectedRoute) : null;
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 w-full h-full flex flex-col animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -579,11 +591,11 @@ export default function RoutesPage() {
         </div>
       )}
 
-      {isManageModalOpen && selectedRoute && (
+      {isManageModalOpen && currentManageRoute && (
         <div className="fixed inset-0 bg-slate-900/50 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl w-full max-w-lg shadow-xl overflow-hidden animate-in zoom-in-95 duration-200">
             <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
-              <h2 className="text-xl font-bold text-slate-800">Gerenciar Rota #{formatRouteId(selectedRoute)}</h2>
+              <h2 className="text-xl font-bold text-slate-800">Gerenciar Rota #{formatRouteId(currentManageRoute)}</h2>
               <button 
                 onClick={() => setIsManageModalOpen(false)}
                 className="text-slate-400 hover:text-slate-600 hover:bg-slate-200/50 p-2 rounded-lg transition-colors"
@@ -600,7 +612,7 @@ export default function RoutesPage() {
                 <div>
                   <h3 className="font-bold text-slate-800 text-xl">Detalhes da Rota</h3>
                   <div className="flex items-center gap-2 mt-1">
-                    <span className="text-sm font-medium text-slate-600">{selectedRoute.date}</span>
+                    <span className="text-sm font-medium text-slate-600">{currentManageRoute.date}</span>
                   </div>
                 </div>
               </div>
@@ -611,7 +623,7 @@ export default function RoutesPage() {
                     <Truck size={18} className="text-slate-400" />
                     <div>
                       <div className="text-xs text-slate-500 font-medium">Entregador Responsável</div>
-                      <div className="font-semibold">{selectedRoute.driver}</div>
+                      <div className="font-semibold">{currentManageRoute.driver}</div>
                     </div>
                   </div>
                 </div>
@@ -623,28 +635,28 @@ export default function RoutesPage() {
                       <div>
                         <div className="text-xs text-slate-500 font-medium">Status Atual</div>
                         <div className="font-semibold">
-                          <StatusBadge status={selectedRoute.status} />
+                          <StatusBadge status={currentManageRoute.status} />
                         </div>
                       </div>
                     </div>
                     
                     {(() => {
-                      const completedStops = selectedRoute.stopDetails?.filter(s => s.status === 'completed' || s.status === 'issue').length || (selectedRoute.status === 'completed' ? selectedRoute.stops : 0);
-                      const totalStops = selectedRoute.stopDetails?.length || selectedRoute.stops || 1;
+                      const completedStops = currentManageRoute.stopDetails?.filter(s => s.status === 'completed' || s.status === 'issue').length || (currentManageRoute.status === 'completed' ? currentManageRoute.stops : 0);
+                      const totalStops = currentManageRoute.stopDetails?.length || currentManageRoute.stops || 1;
                       const progress = Math.min(100, Math.round((completedStops / totalStops) * 100));
                       
                       let estimatedEndTime = '--:--';
-                      if (selectedRoute.departureTime && selectedRoute.estimatedTime) {
-                        const [depHours, depMins] = selectedRoute.departureTime.split(':').map(Number);
+                      if (currentManageRoute.departureTime && currentManageRoute.estimatedTime) {
+                        const [depHours, depMins] = currentManageRoute.departureTime.split(':').map(Number);
                         // estimatedTime is usually like "2 h" or "2.5 h" or "02:30" or something.
                         // For simplicity, let's just parse the first number we find and assume it's minutes or hours.
                         // Actually Google Maps Directions returns something like "1 hora 30 minutos" or "15 mins".
                         // Let's just create a mock finish time, e.g. adding 2 hours.
                         // Since parsing Google Maps natural language is complex, we will just use a placeholder text or a rough heuristic.
                         let addMinutes = 120; // default 2 hours
-                        const estMatch = selectedRoute.estimatedTime.match(/(\d+)/g);
+                        const estMatch = currentManageRoute.estimatedTime.match(/(\d+)/g);
                         if (estMatch) {
-                          if (selectedRoute.estimatedTime.includes('h') || selectedRoute.estimatedTime.includes('hora')) {
+                          if (currentManageRoute.estimatedTime.includes('h') || currentManageRoute.estimatedTime.includes('hora')) {
                             addMinutes = parseInt(estMatch[0]) * 60 + (estMatch[1] ? parseInt(estMatch[1]) : 0);
                           } else {
                             addMinutes = parseInt(estMatch[0]);
@@ -666,8 +678,8 @@ export default function RoutesPage() {
                   </div>
 
                   {(() => {
-                    const completedStops = selectedRoute.stopDetails?.filter(s => s.status === 'completed' || s.status === 'issue').length || (selectedRoute.status === 'completed' ? selectedRoute.stops : 0);
-                    const totalStops = selectedRoute.stopDetails?.length || selectedRoute.stops || 1;
+                    const completedStops = currentManageRoute.stopDetails?.filter(s => s.status === 'completed' || s.status === 'issue').length || (currentManageRoute.status === 'completed' ? currentManageRoute.stops : 0);
+                    const totalStops = currentManageRoute.stopDetails?.length || currentManageRoute.stops || 1;
                     const progress = Math.min(100, Math.round((completedStops / totalStops) * 100));
 
                     return (
@@ -694,13 +706,13 @@ export default function RoutesPage() {
                       <div>
                         <div className="text-xs text-slate-500 font-medium">Resumo Operacional</div>
                         <div className="font-semibold text-sm">
-                          {selectedRoute.stops} paradas • {selectedRoute.distance} km • est. {selectedRoute.estimatedTime}
+                          {currentManageRoute.stops} paradas • {currentManageRoute.distance} km • est. {currentManageRoute.estimatedTime}
                         </div>
                       </div>
                     </div>
-                    {selectedRoute.origin && selectedRoute.destination && (
+                    {currentManageRoute.origin && currentManageRoute.destination && (
                       <a 
-                        href={`https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(selectedRoute.origin)}&destination=${encodeURIComponent(selectedRoute.destination)}${selectedRoute.intermediates?.length ? `&waypoints=${encodeURIComponent(selectedRoute.intermediates.join('|'))}` : ''}`} 
+                        href={`https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(currentManageRoute.origin)}&destination=${encodeURIComponent(currentManageRoute.destination)}${currentManageRoute.intermediates?.length ? `&waypoints=${encodeURIComponent(currentManageRoute.intermediates.join('|'))}` : ''}`} 
                         target="_blank" 
                         rel="noreferrer"
                         className="text-xs font-medium px-3 py-1.5 bg-blue-50 text-blue-600 hover:bg-blue-100 rounded-lg transition-colors flex items-center gap-1.5 shrink-0"
@@ -711,10 +723,10 @@ export default function RoutesPage() {
                     )}
                   </div>
                   
-                  {selectedRoute.stopDetails && selectedRoute.stopDetails.length > 0 && (
+                  {currentManageRoute.stopDetails && currentManageRoute.stopDetails.length > 0 && (
                     <div className="mt-4 space-y-3 pt-4 border-t border-slate-200">
                       <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Paradas</div>
-                      {selectedRoute.stopDetails.map((stop, index) => (
+                      {currentManageRoute.stopDetails.map((stop, index) => (
                         <div key={stop.id || index} className="flex items-start gap-3">
                           <div className={`mt-0.5 flex-shrink-0 w-4 h-4 rounded-full border-2 ${
                             stop.status === 'completed' ? 'border-emerald-500 bg-emerald-500' :
@@ -745,7 +757,7 @@ export default function RoutesPage() {
                 </button>
                 <div className="flex-1 flex gap-3 justify-end">
                   <button 
-                    onClick={() => handleDeleteRoute(selectedRoute.id)}
+                    onClick={() => handleDeleteRoute(currentManageRoute.id)}
                     className="flex-1 px-4 py-2.5 bg-red-50 text-red-600 rounded-xl font-semibold hover:bg-red-100 transition-colors shadow-sm flex items-center justify-center gap-2"
                   >
                     <Trash2 size={18} />
@@ -753,7 +765,7 @@ export default function RoutesPage() {
                   </button>
                   <button 
                     onClick={() => {
-                      setEditingRoute(selectedRoute);
+                      setEditingRoute(currentManageRoute);
                       setIsManageModalOpen(false);
                       setIsEditModalOpen(true);
                     }}
