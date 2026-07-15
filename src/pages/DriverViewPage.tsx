@@ -25,6 +25,7 @@ export default function DriverViewPage({ driverId, driverName, driverStatus }: D
   const [issueText, setIssueText] = useState('');
   const [issueFile, setIssueFile] = useState<File | null>(null);
   const [isSubmittingIssue, setIsSubmittingIssue] = useState(false);
+  const [summaryRoute, setSummaryRoute] = useState<RouteItem | null>(null);
 
   const playNotificationSound = () => {
     try {
@@ -118,8 +119,7 @@ export default function DriverViewPage({ driverId, driverName, driverStatus }: D
         const msg = await messaging();
         if (msg) {
           // If you have a VAPID key from Firebase Console, put it here:
-          // const token = await getToken(msg, { vapidKey: 'YOUR_VAPID_KEY' });
-          const token = await getToken(msg);
+          const token = await getToken(msg, { vapidKey: import.meta.env.VITE_FIREBASE_VAPID_KEY });
           console.log('FCM Token:', token);
           
           if (token && driverId) {
@@ -178,8 +178,12 @@ export default function DriverViewPage({ driverId, driverName, driverStatus }: D
     newStopDetails[stopIndex] = { ...newStopDetails[stopIndex], status: 'completed' };
     
     // Check if all stops are completed
-    const allCompleted = newStopDetails.every(s => s.status === 'completed');
+    const allCompleted = newStopDetails.every(s => s.status === 'completed' || s.status === 'issue');
     
+    if (allCompleted) {
+      setSummaryRoute({ ...route, stopDetails: newStopDetails, status: 'completed' });
+    }
+
     await update(route.id, { 
       stopDetails: newStopDetails,
       ...(allCompleted ? { status: 'completed' } : {})
@@ -331,6 +335,57 @@ export default function DriverViewPage({ driverId, driverName, driverStatus }: D
             );
           })}
         
+      {/* Modal de Resumo de Rota */}
+      {summaryRoute && (
+        <div className="fixed inset-0 bg-emerald-900/80 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+          <div className="bg-white rounded-3xl w-full max-w-sm shadow-2xl overflow-hidden animate-in zoom-in-95 duration-500">
+            <div className="bg-emerald-500 p-8 text-center text-white relative overflow-hidden">
+              <div className="absolute top-0 left-0 w-full h-full bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-10"></div>
+              <div className="w-20 h-20 bg-white/20 rounded-full flex items-center justify-center mx-auto mb-4 relative z-10 backdrop-blur-md border border-white/30">
+                <CheckCircle size={40} className="text-white drop-shadow-md" />
+              </div>
+              <h2 className="text-3xl font-bold mb-2 relative z-10 drop-shadow-sm">Rota Concluída!</h2>
+              <p className="text-emerald-50 font-medium relative z-10">Ótimo trabalho nas entregas de hoje.</p>
+            </div>
+            
+            <div className="p-6 space-y-5 bg-slate-50">
+              <div className="flex gap-4">
+                <div className="flex-1 bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex flex-col items-center justify-center">
+                  <div className="text-slate-500 text-xs font-bold uppercase tracking-wider mb-1">Total de Paradas</div>
+                  <div className="text-3xl font-black text-slate-800">{summaryRoute.stops}</div>
+                </div>
+                <div className="flex-1 bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex flex-col items-center justify-center">
+                  <div className="text-slate-500 text-xs font-bold uppercase tracking-wider mb-1">KM Total</div>
+                  <div className="text-3xl font-black text-slate-800">{summaryRoute.distance}<span className="text-sm font-bold text-slate-400 ml-1">km</span></div>
+                </div>
+              </div>
+              
+              <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100">
+                <div className="flex justify-between items-center mb-2">
+                  <span className="text-slate-500 font-medium text-sm">Entregues:</span>
+                  <span className="font-bold text-emerald-600">
+                    {summaryRoute.stopDetails?.filter(s => s.status === 'completed').length || 0}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-500 font-medium text-sm">Problemas:</span>
+                  <span className="font-bold text-red-500">
+                    {summaryRoute.stopDetails?.filter(s => s.status === 'issue').length || 0}
+                  </span>
+                </div>
+              </div>
+
+              <button
+                onClick={() => setSummaryRoute(null)}
+                className="w-full py-4 mt-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl font-bold transition-all active:scale-[0.98] shadow-lg shadow-slate-900/20"
+              >
+                Voltar ao Início
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Modal de Problema */}
       {isIssueModalOpen && (
         <div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
