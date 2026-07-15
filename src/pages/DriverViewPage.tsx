@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { RouteItem } from '../types';
 import { useCollection } from '../lib/useCollection';
-import { MapPin, CheckCircle, AlertTriangle, Truck, Navigation, Package, XCircle, LogOut, BellRing } from 'lucide-react';
-import { auth, messaging, db } from '../lib/firebase';
+import { MapPin, CheckCircle, AlertTriangle, Truck, Navigation, Package, XCircle, LogOut, BellRing, X, Camera, Image as ImageIcon, Loader2 } from 'lucide-react';
+import { auth, messaging, db, storage } from '../lib/firebase';
 import { signOut } from 'firebase/auth';
 import { getToken, onMessage } from 'firebase/messaging';
 import { doc, updateDoc } from 'firebase/firestore';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 
 interface DriverViewPageProps {
   driverId?: string;
@@ -18,6 +19,12 @@ export default function DriverViewPage({ driverId, driverName, driverStatus }: D
   const [notificationStatus, setNotificationStatus] = useState<string>('default');
   const [notifiedRoutes, setNotifiedRoutes] = useState<string[]>([]);
   const [incomingRoute, setIncomingRoute] = useState<RouteItem | null>(null);
+
+  const [isIssueModalOpen, setIsIssueModalOpen] = useState(false);
+  const [currentIssueStopIndex, setCurrentIssueStopIndex] = useState<number | null>(null);
+  const [issueText, setIssueText] = useState('');
+  const [issueFile, setIssueFile] = useState<File | null>(null);
+  const [isSubmittingIssue, setIsSubmittingIssue] = useState(false);
 
   const playNotificationSound = () => {
     try {
@@ -115,6 +122,10 @@ export default function DriverViewPage({ driverId, driverName, driverStatus }: D
           const token = await getToken(msg);
           console.log('FCM Token:', token);
           
+          if (token && driverId) {
+            await updateDoc(doc(db, 'drivers', driverId), { fcmToken: token });
+          }
+          
           onMessage(msg, (payload) => {
             console.log('Message received. ', payload);
             if (payload.notification) {
@@ -175,12 +186,44 @@ export default function DriverViewPage({ driverId, driverName, driverStatus }: D
     });
   };
 
-  const handleIssueStop = async (route: RouteItem, stopIndex: number) => {
-    if (!route.stopDetails) return;
-    const newStopDetails = [...route.stopDetails];
-    newStopDetails[stopIndex] = { ...newStopDetails[stopIndex], status: 'issue' };
+  const handleIssueStop = (route: RouteItem, stopIndex: number) => {
+    setCurrentIssueStopIndex(stopIndex);
+    setIsIssueModalOpen(true);
+  };
+
+  const submitIssue = async () => {
+    if (!activeRoute || currentIssueStopIndex === null || !activeRoute.stopDetails) return;
     
-    await update(route.id, { stopDetails: newStopDetails });
+    setIsSubmittingIssue(true);
+    try {
+      let photoUrl = '';
+      if (issueFile) {
+        const fileRef = ref(storage, `issues/${activeRoute.id}_${currentIssueStopIndex}_${Date.now()}`);
+        await uploadBytes(fileRef, issueFile);
+        photoUrl = await getDownloadURL(fileRef);
+      }
+
+      const newStopDetails = [...activeRoute.stopDetails];
+      newStopDetails[currentIssueStopIndex] = { 
+        ...newStopDetails[currentIssueStopIndex], 
+        status: 'issue',
+        issueDescription: issueText,
+        issuePhotoUrl: photoUrl
+      };
+      
+      await update(activeRoute.id, { stopDetails: newStopDetails });
+      
+      // Reset state
+      setIsIssueModalOpen(false);
+      setCurrentIssueStopIndex(null);
+      setIssueText('');
+      setIssueFile(null);
+    } catch (error) {
+      console.error("Error submitting issue:", error);
+      alert("Erro ao enviar o problema. Tente novamente.");
+    } finally {
+      setIsSubmittingIssue(false);
+    }
   };
 
   const formatRouteId = (route: RouteItem) => {
@@ -288,6 +331,84 @@ export default function DriverViewPage({ driverId, driverName, driverStatus }: D
             );
           })}
         
+      {/* Modal de Problema */}
+      {isIssueModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl w-full max-w-sm shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="bg-red-500 p-4 text-white flex justify-between items-center">
+              <h3 className="font-bold text-lg flex items-center gap-2">
+                <AlertTriangle size={20} /> Relatar Problema
+              </h3>
+              <button 
+                onClick={() => setIsIssueModalOpen(false)}
+                className="text-white/80 hover:text-white hover:bg-white/10 p-1.5 rounded-lg transition-colors"
+              >
+                <X size={20} />
+              </button>
+            </div>
+            
+            <div className="p-5 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">O que aconteceu?</label>
+                <textarea
+                  value={issueText}
+                  onChange={(e) => setIssueText(e.target.value)}
+                  placeholder="Descreva o problema..."
+                  className="w-full border border-slate-200 rounded-xl p-3 text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent min-h-[100px] resize-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">Anexar Foto (Opcional)</label>
+                <div className="flex gap-2">
+                  <label className="flex-1 flex flex-col items-center justify-center gap-2 py-4 border-2 border-dashed border-slate-200 rounded-xl cursor-pointer hover:bg-slate-50 hover:border-slate-300 transition-colors">
+                    <Camera size={24} className="text-slate-400" />
+                    <span className="text-xs font-medium text-slate-500">Tirar Foto</span>
+                    <input 
+                      type="file" 
+                      accept="image/*" 
+                      capture="environment"
+                      className="hidden" 
+                      onChange={(e) => setIssueFile(e.target.files?.[0] || null)}
+                    />
+                  </label>
+                  <label className="flex-1 flex flex-col items-center justify-center gap-2 py-4 border-2 border-dashed border-slate-200 rounded-xl cursor-pointer hover:bg-slate-50 hover:border-slate-300 transition-colors">
+                    <ImageIcon size={24} className="text-slate-400" />
+                    <span className="text-xs font-medium text-slate-500">Galeria</span>
+                    <input 
+                      type="file" 
+                      accept="image/*" 
+                      className="hidden" 
+                      onChange={(e) => setIssueFile(e.target.files?.[0] || null)}
+                    />
+                  </label>
+                </div>
+                {issueFile && (
+                  <div className="mt-2 text-sm text-emerald-600 flex items-center gap-1 font-medium bg-emerald-50 p-2 rounded-lg">
+                    <CheckCircle size={16} /> Foto selecionada: {issueFile.name}
+                  </div>
+                )}
+              </div>
+
+              <button
+                onClick={submitIssue}
+                disabled={isSubmittingIssue}
+                className="w-full py-3.5 bg-red-500 hover:bg-red-600 text-white rounded-xl font-bold transition-colors disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              >
+                {isSubmittingIssue ? (
+                  <>
+                    <Loader2 size={20} className="animate-spin" />
+                    Enviando...
+                  </>
+                ) : (
+                  'Confirmar Problema'
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {incomingRoute && (
         <div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
           <div className="bg-white rounded-2xl w-full max-w-sm shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">

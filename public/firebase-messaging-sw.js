@@ -14,10 +14,17 @@ const messaging = firebase.messaging();
 
 messaging.onBackgroundMessage(function(payload) {
   console.log('[firebase-messaging-sw.js] Received background message ', payload);
-  const notificationTitle = payload.notification.title;
+  const notificationTitle = payload.notification?.title || 'Nova Rota!';
   const notificationOptions = {
-    body: payload.notification.body,
-    icon: '/icon.png'
+    body: payload.notification?.body || 'Você tem uma nova solicitação.',
+    icon: '/icon-192x192.png',
+    badge: '/icon-192x192.png',
+    vibrate: [200, 100, 200, 100, 200, 100, 200],
+    requireInteraction: true,
+    data: {
+      dateOfArrival: Date.now(),
+      primaryKey: '2'
+    }
   };
 
   self.registration.showNotification(notificationTitle, notificationOptions);

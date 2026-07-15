@@ -16,7 +16,13 @@ export interface RouteItem {
   distance: number;
   estimatedTime: string;
   date: string;
-  stopDetails?: { id: string; address: string; status: 'pending' | 'completed' | 'issue' }[];
+  stopDetails?: { 
+    id: string; 
+    address: string; 
+    status: 'pending' | 'completed' | 'issue';
+    issueDescription?: string;
+    issuePhotoUrl?: string;
+  }[];
 }
 
 export interface Driver {

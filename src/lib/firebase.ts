@@ -15,6 +15,8 @@ const firebaseConfig = {
 export const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app, "ai-studio-orkestriaosbrass-d4be16bf-f869-4fdf-95ef-b446bd38bbb5");
 export const auth = getAuth(app);
+import { getStorage } from 'firebase/storage';
+export const storage = getStorage(app);
 
 // Inicializa o Messaging apenas se for suportado pelo navegador
 export const messaging = async () => {

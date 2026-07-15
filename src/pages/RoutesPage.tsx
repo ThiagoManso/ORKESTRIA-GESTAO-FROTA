@@ -735,11 +735,23 @@ export default function RoutesPage() {
                           }`} />
                           <div className="flex-1">
                             <div className="text-sm font-medium text-slate-800">{stop.address}</div>
-                            <div className="text-xs text-slate-500">
+                            <div className="text-xs text-slate-500 mb-1">
                               {stop.status === 'completed' && <span className="text-emerald-600">Entregue</span>}
-                              {stop.status === 'issue' && <span className="text-red-600">Problema na entrega</span>}
+                              {stop.status === 'issue' && <span className="text-red-600 font-medium">Problema reportado</span>}
                               {stop.status === 'pending' && <span>Pendente</span>}
                             </div>
+                            {stop.status === 'issue' && (stop.issueDescription || stop.issuePhotoUrl) && (
+                              <div className="mt-2 bg-red-50 border border-red-100 rounded-lg p-3">
+                                {stop.issueDescription && (
+                                  <p className="text-sm text-red-800 mb-2 whitespace-pre-wrap">{stop.issueDescription}</p>
+                                )}
+                                {stop.issuePhotoUrl && (
+                                  <a href={stop.issuePhotoUrl} target="_blank" rel="noopener noreferrer" className="block max-w-[200px] overflow-hidden rounded-md border border-red-200">
+                                    <img src={stop.issuePhotoUrl} alt="Foto do problema" className="w-full h-auto object-cover hover:scale-105 transition-transform" />
+                                  </a>
+                                )}
+                              </div>
+                            )}
                           </div>
                         </div>
                       ))}
