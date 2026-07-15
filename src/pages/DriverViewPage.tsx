@@ -530,7 +530,7 @@ export default function DriverViewPage({ driverId, driverName, driverStatus }: D
     if (!showEndOfDay) return null;
     
     const todayStr = new Date().toISOString().split('T')[0];
-    const todaysRoutes = routes.filter(r => 
+    const todaysRoutes = (routes || []).filter(r => 
       r.driver === driverName && 
       r.status === 'completed' && 
       (r.date === todayStr || (r as any).createdAt?.includes(todayStr) || true) // temporary fallback to all completed if date missing
