@@ -10,18 +10,18 @@ if (getApps().length === 0) {
 const db = getFirestore();
 const messaging = getMessaging();
 
-export const onRouteCreatedOrAssigned = functions.firestore.onDocumentUpdated({
+export const onRouteEvent = functions.firestore.onDocumentWritten({
   document: 'routes/{routeId}',
   database: 'ai-studio-orkestriaosbrass-d4be16bf-f869-4fdf-95ef-b446bd38bbb5'
 }, async (event) => {
-  const snapshotBefore = event.data?.before.data();
-  const snapshotAfter = event.data?.after.data();
+  const snapshotBefore = event.data?.before?.data();
+  const snapshotAfter = event.data?.after?.data();
 
-  if (!snapshotAfter || !snapshotBefore) return;
+  if (!snapshotAfter) return; // Ignore deletions
 
-  const driverBefore = snapshotBefore.driver;
+  const driverBefore = snapshotBefore?.driver;
   const driverAfter = snapshotAfter.driver;
-  const statusBefore = snapshotBefore.status;
+  const statusBefore = snapshotBefore?.status;
   const statusAfter = snapshotAfter.status;
 
   // Se a rota acabou de ser atribuída a um motorista ou ficou 'pending'
