@@ -9,7 +9,7 @@ const messaging_1 = require("firebase-admin/messaging");
 if ((0, app_1.getApps)().length === 0) {
     (0, app_1.initializeApp)();
 }
-const db = (0, firestore_1.getFirestore)();
+const db = (0, firestore_1.getFirestore)('ai-studio-orkestriaosbrass-d4be16bf-f869-4fdf-95ef-b446bd38bbb5');
 const messaging = (0, messaging_1.getMessaging)();
 exports.onRouteEvent = functions.firestore.onDocumentWritten({
     document: 'routes/{routeId}',

@@ -7,7 +7,7 @@ import { getMessaging } from 'firebase-admin/messaging';
 if (getApps().length === 0) {
     initializeApp();
 }
-const db = getFirestore();
+const db = getFirestore('ai-studio-orkestriaosbrass-d4be16bf-f869-4fdf-95ef-b446bd38bbb5');
 const messaging = getMessaging();
 
 export const onRouteEvent = functions.firestore.onDocumentWritten({

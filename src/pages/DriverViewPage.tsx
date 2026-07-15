@@ -26,6 +26,7 @@ export default function DriverViewPage({ driverId, driverName, driverStatus }: D
   const [issueFile, setIssueFile] = useState<File | null>(null);
   const [isSubmittingIssue, setIsSubmittingIssue] = useState(false);
   const [summaryRoute, setSummaryRoute] = useState<RouteItem | null>(null);
+  const [showEndOfDay, setShowEndOfDay] = useState(false);
 
   const playNotificationSound = () => {
     try {
@@ -525,23 +526,108 @@ export default function DriverViewPage({ driverId, driverName, driverStatus }: D
     );
   }
 
+  const renderEndOfDaySummary = () => {
+    if (!showEndOfDay) return null;
+    
+    const todayStr = new Date().toISOString().split('T')[0];
+    const todaysRoutes = routes.filter(r => 
+      r.driver === driverName && 
+      r.status === 'completed' && 
+      (r.date === todayStr || (r as any).createdAt?.includes(todayStr) || true) // temporary fallback to all completed if date missing
+    );
+
+    const totalRoutes = todaysRoutes.length;
+    const totalStops = todaysRoutes.reduce((acc, curr) => acc + (curr.stops || 0), 0);
+    const totalDistance = todaysRoutes.reduce((acc, curr) => acc + (curr.distance || 0), 0);
+    
+    const totalTimeMins = todaysRoutes.reduce((acc, curr) => {
+      const match = curr.estimatedTime?.match(/(\d+)/);
+      const mins = match ? parseInt(match[1], 10) : 0;
+      return acc + (curr.estimatedTime?.includes('hora') || curr.estimatedTime?.includes('hour') ? mins * 60 : mins);
+    }, 0);
+    
+    const hours = Math.floor(totalTimeMins / 60);
+    const mins = totalTimeMins % 60;
+    const timeStr = hours > 0 ? `${hours}h ${mins}m` : `${mins} min`;
+
+    return (
+      <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div className="bg-white w-full max-w-sm rounded-3xl overflow-hidden shadow-2xl animate-in slide-in-from-bottom-10 fade-in duration-300">
+          <div className="bg-indigo-600 p-6 text-center text-white">
+            <div className="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center mx-auto mb-4">
+              <CheckCircle size={32} className="text-white" />
+            </div>
+            <h2 className="text-2xl font-bold">Fim de Expediente</h2>
+            <p className="text-indigo-100 mt-1 opacity-90">Bom descanso, {driverName?.split(' ')[0]}!</p>
+          </div>
+          
+          <div className="p-6">
+            <h3 className="font-bold text-slate-800 mb-4 text-center">Seu Resumo de Hoje</h3>
+            
+            <div className="grid grid-cols-2 gap-3 mb-6">
+              <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 flex flex-col items-center">
+                <Package size={20} className="text-blue-500 mb-1" />
+                <span className="text-2xl font-bold text-slate-800">{totalRoutes}</span>
+                <span className="text-xs text-slate-500 font-medium uppercase tracking-wider">Rotas</span>
+              </div>
+              <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 flex flex-col items-center">
+                <MapPin size={20} className="text-emerald-500 mb-1" />
+                <span className="text-2xl font-bold text-slate-800">{totalStops}</span>
+                <span className="text-xs text-slate-500 font-medium uppercase tracking-wider">Entregas</span>
+              </div>
+              <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 flex flex-col items-center">
+                <Clock size={20} className="text-amber-500 mb-1" />
+                <span className="text-xl font-bold text-slate-800">{timeStr}</span>
+                <span className="text-xs text-slate-500 font-medium uppercase tracking-wider">Tempo</span>
+              </div>
+              <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 flex flex-col items-center">
+                <Navigation size={20} className="text-indigo-500 mb-1" />
+                <span className="text-xl font-bold text-slate-800">{totalDistance.toFixed(1)} <span className="text-sm">km</span></span>
+                <span className="text-xs text-slate-500 font-medium uppercase tracking-wider">Distância</span>
+              </div>
+            </div>
+
+            <button 
+              onClick={() => {
+                if(driverStatus !== 'offline') toggleOnlineStatus(); // Go offline automatically
+                setShowEndOfDay(false);
+              }}
+              className="w-full bg-slate-800 hover:bg-slate-900 text-white font-bold py-3.5 rounded-xl transition-colors active:scale-95"
+            >
+              Confirmar e Fechar
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="flex flex-col min-h-screen bg-slate-50 font-sans">
+      {renderEndOfDaySummary()}
       <div className="bg-white shadow-sm p-5 sticky top-0 z-10 flex items-center justify-between border-b border-slate-200">
         <div>
           <h1 className="text-xl font-bold text-slate-800">Orkestria Entregador</h1>
           <p className="text-sm text-slate-500">Olá, {driverName?.split(' ')[0] || 'Motorista'}</p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
+          {(!activeRoute) && (
+            <button 
+              onClick={() => setShowEndOfDay(true)} 
+              className="px-3 py-1.5 bg-indigo-600 text-white rounded-lg font-bold text-xs shadow-sm"
+            >
+              Encerrar Dia
+            </button>
+          )}
           <button 
             onClick={toggleOnlineStatus}
-            className={`px-4 py-2 rounded-full font-bold text-sm transition-colors flex items-center gap-2 ${driverStatus === 'active' || driverStatus === 'on_route' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}
+            className={`px-3 py-1.5 rounded-lg font-bold text-xs transition-colors flex items-center gap-1.5 ${driverStatus === 'active' || driverStatus === 'on_route' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}
           >
             <div className={`w-2 h-2 rounded-full ${driverStatus === 'active' || driverStatus === 'on_route' ? 'bg-emerald-500' : 'bg-slate-400'}`} />
             {driverStatus === 'active' || driverStatus === 'on_route' ? 'Online' : 'Offline'}
           </button>
-          <button onClick={() => signOut(auth)} className="w-10 h-10 bg-slate-100 rounded-full flex items-center justify-center text-slate-500 hover:bg-slate-200 transition-colors">
-            <LogOut size={20} />
+          <button onClick={() => signOut(auth)} className="w-8 h-8 bg-slate-100 rounded-lg flex items-center justify-center text-slate-500 hover:bg-slate-200 transition-colors">
+            <LogOut size={16} />
           </button>
         </div>
       </div>
