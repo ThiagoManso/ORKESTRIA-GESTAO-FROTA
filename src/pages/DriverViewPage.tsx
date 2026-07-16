@@ -176,8 +176,7 @@ export default function DriverViewPage({ driverId, driverName, driverStatus }: D
       if (permission === 'granted') {
         const msg = await messaging();
         if (msg) {
-          // If you have a VAPID key from Firebase Console, put it here:
-          const token = await getToken(msg, { vapidKey: import.meta.env.VITE_FIREBASE_VAPID_KEY });
+          const token = await getToken(msg, { vapidKey: (import.meta as any).env.VITE_FIREBASE_VAPID_KEY });
           console.log('FCM Token:', token);
           
           if (token && driverId) {

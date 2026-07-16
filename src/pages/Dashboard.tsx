@@ -251,8 +251,9 @@ export default function Dashboard() {
             </tbody>
           </table>
         </div>
-        </>
-      ) : (
+      </div>
+      </>
+    ) : (
         <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6">
             <StatCard 
