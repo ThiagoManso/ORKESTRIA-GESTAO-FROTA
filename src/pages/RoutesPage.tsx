@@ -15,7 +15,7 @@ const StatusBadge = ({ status }: { status: RouteItem['status'] }) => {
   }
 }
 
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, addDoc, collection } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 
 const formatRouteId = (route: RouteItem | null) => {
@@ -468,12 +468,43 @@ export default function RoutesPage() {
     setIsEditModalOpen(false);
   };
 
+
   const handleDeleteRoute = async (id: string) => {
-    if (window.confirm('Tem certeza que deseja excluir esta rota? Esta ação não pode ser desfeita.')) {
+    if (window.confirm('Tem certeza que deseja excluir esta rota? Os endereços retornarão ao Banco de Demandas.')) {
+      const routeToCancel = routes.find(r => r.id === id);
+      if (routeToCancel && routeToCancel.stopDetails) {
+        for (const stop of routeToCancel.stopDetails) {
+          try {
+            if (stop.externalRequestId) {
+              const reqRef = doc(db, 'external_requests', stop.externalRequestId);
+              await updateDoc(reqRef, { status: 'pending' });
+            } else if (stop.address && stop.address.trim() !== '' && stop.id !== `stop-${routeToCancel.stopDetails.length - 1}`) {
+              // Create new demand for manual stops, ignore destination if it's the last stop and we didn't specify return
+              await addDoc(collection(db, 'external_requests'), {
+                type: 'entrega',
+                address: stop.address,
+                orderNumber: stop.orderNumber || '',
+                requesterName: stop.customerName || '',
+                contactPhone: stop.customerPhone || '',
+                observations: stop.observation || '',
+                scheduledDate: '',
+                status: 'pending',
+                read: true,
+                createdAt: new Date().toISOString(),
+                lat: stop.lat || null,
+                lng: stop.lng || null
+              });
+            }
+          } catch (err) {
+            console.error("Failed to restore stop", stop, err);
+          }
+        }
+      }
       await remove(id);
       setIsManageModalOpen(false);
     }
   };
+
 
   const currentManageRoute = selectedRoute ? (routes.find(r => r.id === selectedRoute.id) || selectedRoute) : null;
 
@@ -627,13 +658,7 @@ export default function RoutesPage() {
                     <button type="button" onClick={() => setIsRequestsModalOpen(true)} className="text-xs font-semibold px-3 py-1.5 bg-emerald-500 text-white rounded-lg shadow-sm hover:bg-emerald-600 flex items-center gap-1.5 transition-colors">
                       <Package size={14} /> Puxar Solicitações
                     </button>
-                    <button type="button" onClick={downloadCSVTemplate} className="text-xs font-semibold px-3 py-1.5 bg-white border border-slate-200 text-slate-700 rounded-lg shadow-sm hover:bg-slate-50 flex items-center gap-1.5">
-                      <Download size={14} /> Modelo CSV
-                    </button>
-                    <label className="text-xs font-semibold px-3 py-1.5 bg-brand-cyan text-white rounded-lg shadow-sm hover:bg-brand-blue cursor-pointer flex items-center gap-1.5 transition-colors">
-                      <Upload size={14} /> Importar CSV
-                      <input type="file" accept=".csv" className="hidden" onChange={(e) => handleFileUpload(e, false)} />
-                    </label>
+
                   </div>
                 </div>
                 

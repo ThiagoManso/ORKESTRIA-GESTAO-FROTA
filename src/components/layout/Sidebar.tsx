@@ -25,7 +25,7 @@ export default function Sidebar({ currentView, onViewChange, isOpen, setIsOpen }
   const menuItems: { id: ViewState; label: string; icon: React.ElementType }[] = [
     { id: 'dashboard', label: 'Torre de Controle', icon: LayoutDashboard },
     { id: 'routes', label: 'Rotas', icon: Map },
-    { id: 'requests', label: 'Solicitações', icon: Package },
+    { id: 'requests', label: 'Banco de Demandas', icon: Package },
     { id: 'map', label: 'Mapa de Operação', icon: MapPin },
     { id: 'drivers', label: 'Entregadores', icon: Users },
     { id: 'vehicles', label: 'Veículos', icon: Truck },
