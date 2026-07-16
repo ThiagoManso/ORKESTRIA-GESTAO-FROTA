@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useCollection } from '../lib/useCollection';
-import { DailyLog } from '../types';
+import { DailyLog, RouteItem } from '../types';
 import { Package, TrendingUp, Users, MapPin, CheckCircle, Clock, AlertTriangle, Truck, Activity } from 'lucide-react';
 import { 
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -44,8 +44,9 @@ const StatCard = ({ title, value, icon: Icon, trend, trendLabel, gradientClass }
 );
 
 export default function Dashboard() {
-  const [activeTab, setActiveTab] = useState<'geral' | 'kpis'>('geral');
+  const [activeTab, setActiveTab] = useState<'geral' | 'kpis' | 'stops'>('geral');
   const { data: dailyLogs } = useCollection<DailyLog>('dailyLogs');
+  const { data: routes } = useCollection<RouteItem>('routes');
 
   // Calculate KPIs
   const todayStr = new Date().toISOString().split('T')[0];
@@ -66,6 +67,24 @@ export default function Dashboard() {
   
   const avgKmPerDriver = uniqueDrivers > 0 ? Math.round(totalKmAllTime / uniqueDrivers) : 0;
   const avgKmPerVehicle = uniqueVehicles > 0 ? Math.round(totalKmAllTime / uniqueVehicles) : 0;
+
+
+  // Calculate Stops Data
+  const allStops = routes?.flatMap(r => {
+    if (!r.stopDetails) return [];
+    return r.stopDetails.map(stop => ({
+      ...stop,
+      routeId: r.id,
+      routeNumber: r.routeNumber,
+      driverName: r.driver,
+      routeDate: r.date
+    }));
+  }) || [];
+  
+  const totalStops = allStops.length;
+  const completedStops = allStops.filter(s => s.status === 'completed').length;
+  const pendingStops = allStops.filter(s => s.status === 'pending').length;
+  const issueStops = allStops.filter(s => s.status === 'issue').length;
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 w-full mx-auto space-y-6 sm:space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -98,6 +117,14 @@ export default function Dashboard() {
         >
           KPIs de Frota
           {activeTab === 'kpis' && <div className="absolute bottom-0 left-0 w-full h-0.5 bg-primary rounded-t-full"></div>}
+        </button>
+
+        <button 
+          onClick={() => setActiveTab('stops')}
+          className={`pb-3 font-semibold text-sm transition-colors relative ${activeTab === 'stops' ? 'text-primary' : 'text-slate-500 hover:text-slate-700'}`}
+        >
+          Status das Paradas
+          {activeTab === 'stops' && <div className="absolute bottom-0 left-0 w-full h-0.5 bg-primary rounded-t-full"></div>}
         </button>
       </div>
 
@@ -310,6 +337,79 @@ export default function Dashboard() {
                         </td>
                       </tr>
                     ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'stops' && (
+        <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 sm:gap-6">
+            <StatCard title="Total de Paradas" value={totalStops} icon={MapPin} gradientClass="bg-gradient-to-br from-slate-500 to-slate-600" />
+            <StatCard title="Concluídas" value={completedStops} icon={CheckCircle} gradientClass="bg-gradient-to-br from-emerald-400 to-emerald-500" />
+            <StatCard title="Pendentes" value={pendingStops} icon={Clock} gradientClass="bg-gradient-to-br from-amber-400 to-amber-500" />
+            <StatCard title="Com Problema" value={issueStops} icon={AlertTriangle} gradientClass="bg-gradient-to-br from-red-400 to-red-500" />
+          </div>
+
+          <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+            <div className="p-5 sm:p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+              <h3 className="text-lg font-semibold text-slate-800">Detalhamento das Paradas</h3>
+            </div>
+            
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider">
+                    <th className="p-4 font-semibold border-b border-slate-200">Rota / Motorista</th>
+                    <th className="p-4 font-semibold border-b border-slate-200">Endereço</th>
+                    <th className="p-4 font-semibold border-b border-slate-200">Nº Pedido</th>
+                    <th className="p-4 font-semibold border-b border-slate-200">Cliente</th>
+                    <th className="p-4 font-semibold border-b border-slate-200">Status</th>
+                    <th className="p-4 font-semibold border-b border-slate-200">Observação</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {allStops.map((stop, index) => (
+                    <tr key={index} className="hover:bg-slate-50/50 transition-colors">
+                      <td className="p-4 align-top">
+                        <div className="font-medium text-slate-800">Rota #{stop.routeNumber}</div>
+                        <div className="text-xs text-slate-500">{stop.driverName} • {stop.routeDate}</div>
+                      </td>
+                      <td className="p-4 align-top">
+                        <div className="text-sm text-slate-700 max-w-[250px] truncate" title={stop.address}>{stop.address}</div>
+                      </td>
+                      <td className="p-4 align-top">
+                        <span className="text-sm text-slate-600 font-mono">{stop.orderNumber || '-'}</span>
+                      </td>
+                      <td className="p-4 align-top">
+                        <div className="text-sm font-medium text-slate-800">{stop.customerName || '-'}</div>
+                        <div className="text-xs text-slate-500">{stop.customerPhone || '-'}</div>
+                      </td>
+                      <td className="p-4 align-top">
+                        {stop.status === 'completed' && <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-700 border border-emerald-200"><CheckCircle size={12} /> Concluído</span>}
+                        {stop.status === 'pending' && <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-100 text-amber-700 border border-amber-200"><Clock size={12} /> Pendente</span>}
+                        {stop.status === 'issue' && <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-red-100 text-red-700 border border-red-200"><AlertTriangle size={12} /> Problema</span>}
+                      </td>
+                      <td className="p-4 align-top">
+                        <div className="text-xs text-slate-600 max-w-[200px]">
+                          {stop.status === 'issue' && (stop as any).issueDescription ? (
+                            <span className="text-red-600 font-medium">Problema: {(stop as any).issueDescription}</span>
+                          ) : (
+                            stop.observation || '-'
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                  {allStops.length === 0 && (
+                    <tr>
+                      <td colSpan={6} className="p-8 text-center text-slate-500 text-sm">
+                        Nenhuma parada encontrada.
+                      </td>
+                    </tr>
                   )}
                 </tbody>
               </table>
