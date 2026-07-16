@@ -16,6 +16,7 @@ export default function VehiclesPage() {
     year: new Date().getFullYear(),
     capacity: 0,
     type: 'car' as Vehicle['type'],
+    initialKm: 0,
   });
 
   const handleAddVehicle = async (e: React.FormEvent) => {
@@ -29,6 +30,7 @@ export default function VehiclesPage() {
       capacity: newVehicle.capacity,
       type: newVehicle.type,
       status: 'active',
+      initialKm: newVehicle.initialKm,
     });
     
     setIsModalOpen(false);
@@ -39,6 +41,7 @@ export default function VehiclesPage() {
       year: new Date().getFullYear(),
       capacity: 0,
       type: 'car',
+      initialKm: 0,
     });
   };
 
@@ -54,6 +57,7 @@ export default function VehiclesPage() {
       year: selectedVehicle.year,
       capacity: selectedVehicle.capacity,
       status: selectedVehicle.status,
+      initialKm: selectedVehicle.initialKm,
     });
     setIsEditModalOpen(false);
   };
@@ -109,6 +113,7 @@ export default function VehiclesPage() {
                 <th className="px-6 py-4 font-semibold">Veículo</th>
                 <th className="px-6 py-4 font-semibold">Placa</th>
                 <th className="px-6 py-4 font-semibold">Capacidade</th>
+                <th className="px-6 py-4 font-semibold">KM Inicial</th>
                 <th className="px-6 py-4 font-semibold">Status</th>
                 <th className="px-6 py-4 text-right font-semibold">Ações</th>
               </tr>
@@ -135,6 +140,11 @@ export default function VehiclesPage() {
                   <td className="px-6 py-4">
                     <div className="text-sm text-slate-600 font-medium">
                       {vehicle.capacity} kg
+                    </div>
+                  </td>
+                  <td className="px-6 py-4">
+                    <div className="text-sm text-slate-600 font-medium">
+                      {vehicle.initialKm || 0} km
                     </div>
                   </td>
                   <td className="px-6 py-4">
@@ -247,6 +257,18 @@ export default function VehiclesPage() {
                       placeholder="0"
                     />
                   </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 mb-1.5">KM Inicial (Atual)</label>
+                  <input 
+                    type="number" 
+                    required
+                    value={newVehicle.initialKm}
+                    onChange={(e) => setNewVehicle({...newVehicle, initialKm: parseInt(e.target.value) || 0})}
+                    className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:border-primary focus:ring-1 focus:ring-primary shadow-sm"
+                    placeholder="Ex: 150000"
+                  />
                 </div>
               </div>
 
@@ -368,6 +390,18 @@ export default function VehiclesPage() {
                       <option value="inactive">Inativo</option>
                     </select>
                   </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 mb-1.5">KM Inicial (Atual)</label>
+                  <input 
+                    type="number" 
+                    required
+                    value={selectedVehicle.initialKm || 0}
+                    onChange={(e) => setSelectedVehicle({...selectedVehicle, initialKm: parseInt(e.target.value) || 0})}
+                    className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:border-primary focus:ring-1 focus:ring-primary shadow-sm"
+                    placeholder="Ex: 150000"
+                  />
                 </div>
               </div>
 

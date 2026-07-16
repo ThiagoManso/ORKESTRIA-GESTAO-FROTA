@@ -1,5 +1,7 @@
-import React from 'react';
-import { Package, TrendingUp, Users, MapPin, CheckCircle, Clock, AlertTriangle } from 'lucide-react';
+import React, { useState } from 'react';
+import { useCollection } from '../lib/useCollection';
+import { DailyLog } from '../types';
+import { Package, TrendingUp, Users, MapPin, CheckCircle, Clock, AlertTriangle, Truck, Activity } from 'lucide-react';
 import { 
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell
@@ -42,12 +44,35 @@ const StatCard = ({ title, value, icon: Icon, trend, trendLabel, gradientClass }
 );
 
 export default function Dashboard() {
+  const [activeTab, setActiveTab] = useState<'geral' | 'kpis'>('geral');
+  const { data: dailyLogs } = useCollection<DailyLog>('dailyLogs');
+
+  // Calculate KPIs
+  const todayStr = new Date().toISOString().split('T')[0];
+  const todaysLogs = dailyLogs?.filter(l => l.date === todayStr) || [];
+  
+  const totalKmToday = todaysLogs.reduce((acc, log) => {
+    if (log.finalKm && log.finalKm > log.initialKm) {
+      return acc + (log.finalKm - log.initialKm);
+    }
+    return acc;
+  }, 0);
+
+  const completedLogs = dailyLogs?.filter(l => l.status === 'completed' && l.finalKm && l.finalKm > l.initialKm) || [];
+  const totalKmAllTime = completedLogs.reduce((acc, log) => acc + (log.finalKm! - log.initialKm), 0);
+  
+  const uniqueDrivers = new Set(completedLogs.map(l => l.driverId)).size;
+  const uniqueVehicles = new Set(completedLogs.map(l => l.vehicleId)).size;
+  
+  const avgKmPerDriver = uniqueDrivers > 0 ? Math.round(totalKmAllTime / uniqueDrivers) : 0;
+  const avgKmPerVehicle = uniqueVehicles > 0 ? Math.round(totalKmAllTime / uniqueVehicles) : 0;
+
   return (
     <div className="p-4 sm:p-6 lg:p-8 w-full mx-auto space-y-6 sm:space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
       
       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-end gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-slate-800 mb-1">Visão Geral</h1>
+          <h1 className="text-2xl font-bold text-slate-800 mb-1">Torre de Controle</h1>
           <p className="text-slate-500 text-sm sm:text-base">Acompanhamento em tempo real da sua operação logística.</p>
         </div>
         <div className="flex gap-2 w-full sm:w-auto">
@@ -58,6 +83,27 @@ export default function Dashboard() {
           </select>
         </div>
       </div>
+
+      <div className="flex gap-4 border-b border-slate-200">
+        <button 
+          onClick={() => setActiveTab('geral')}
+          className={`pb-3 font-semibold text-sm transition-colors relative ${activeTab === 'geral' ? 'text-primary' : 'text-slate-500 hover:text-slate-700'}`}
+        >
+          Visão Geral
+          {activeTab === 'geral' && <div className="absolute bottom-0 left-0 w-full h-0.5 bg-primary rounded-t-full"></div>}
+        </button>
+        <button 
+          onClick={() => setActiveTab('kpis')}
+          className={`pb-3 font-semibold text-sm transition-colors relative ${activeTab === 'kpis' ? 'text-primary' : 'text-slate-500 hover:text-slate-700'}`}
+        >
+          KPIs de Frota
+          {activeTab === 'kpis' && <div className="absolute bottom-0 left-0 w-full h-0.5 bg-primary rounded-t-full"></div>}
+        </button>
+      </div>
+
+      {activeTab === 'geral' ? (
+        <>
+
 
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 sm:gap-6">
         <StatCard 
@@ -205,8 +251,72 @@ export default function Dashboard() {
             </tbody>
           </table>
         </div>
-      </div>
-      
+        </>
+      ) : (
+        <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6">
+            <StatCard 
+              title="KM Rodado Hoje" 
+              value={`${totalKmToday} km`} 
+              icon={Activity} 
+              gradientClass="bg-gradient-to-br from-indigo-500 to-purple-500"
+            />
+            <StatCard 
+              title="Média de KM por Entregador" 
+              value={`${avgKmPerDriver} km`} 
+              icon={Users} 
+              gradientClass="bg-gradient-to-br from-blue-500 to-cyan-500"
+            />
+            <StatCard 
+              title="Média de KM por Veículo" 
+              value={`${avgKmPerVehicle} km`} 
+              icon={Truck} 
+              gradientClass="bg-gradient-to-br from-emerald-500 to-teal-500"
+            />
+          </div>
+
+          <div className="bg-white p-5 sm:p-6 rounded-2xl border border-slate-200 shadow-sm w-full">
+            <h3 className="text-lg font-semibold text-slate-800 mb-6">Diários de Bordo (Hoje)</h3>
+            <div className="overflow-x-auto -mx-5 sm:mx-0 px-5 sm:px-0">
+              <table className="w-full text-left border-collapse min-w-[600px]">
+                <thead>
+                  <tr className="border-b border-slate-100 text-sm text-slate-500">
+                    <th className="pb-3 font-medium">Entregador</th>
+                    <th className="pb-3 font-medium">Veículo</th>
+                    <th className="pb-3 font-medium">Status</th>
+                    <th className="pb-3 font-medium">KM Inicial</th>
+                    <th className="pb-3 font-medium">KM Final</th>
+                    <th className="pb-3 font-medium text-right">KM Percorrido</th>
+                  </tr>
+                </thead>
+                <tbody className="text-sm">
+                  {todaysLogs.length === 0 ? (
+                    <tr><td colSpan={6} className="py-8 text-center text-slate-500">Nenhum diário registrado hoje.</td></tr>
+                  ) : (
+                    todaysLogs.map(log => (
+                      <tr key={log.id} className="border-b border-slate-50 hover:bg-slate-50 transition-colors">
+                        <td className="py-4 text-slate-700 font-medium">{log.driverName}</td>
+                        <td className="py-4 font-mono text-slate-700">{log.vehiclePlate}</td>
+                        <td className="py-4">
+                          <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-lg font-medium text-xs ${log.status === 'completed' ? 'bg-emerald-50 text-emerald-700' : 'bg-blue-50 text-blue-700'}`}>
+                            {log.status === 'completed' ? 'Encerrado' : 'Em Rota'}
+                          </span>
+                        </td>
+                        <td className="py-4 text-slate-600">{log.initialKm}</td>
+                        <td className="py-4 text-slate-600">{log.finalKm || '-'}</td>
+                        <td className="py-4 text-right font-bold text-slate-700">
+                          {log.finalKm && log.finalKm > log.initialKm ? log.finalKm - log.initialKm : 0} km
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

@@ -50,4 +50,38 @@ export interface Vehicle {
   capacity: number; // In kg
   type: 'motorcycle' | 'car' | 'van' | 'truck';
   status: 'active' | 'maintenance' | 'inactive';
+  initialKm?: number;
+}
+
+export interface DailyLog {
+  id: string;
+  driverId: string;
+  driverName: string;
+  vehicleId: string;
+  vehiclePlate: string;
+  date: string; // YYYY-MM-DD
+  initialKm: number;
+  finalKm?: number;
+  checklist: {
+    extinguisher: boolean;
+    tools: boolean;
+    seatbelt: boolean;
+    tires: boolean;
+    oil: boolean;
+    water: boolean;
+    brakes: boolean;
+    dashboardLights: boolean;
+    headlights: boolean;
+    turnSignals: boolean;
+    brakeLights: boolean;
+    mirrors: boolean;
+    wipers: boolean;
+    cleaning: boolean;
+    doors: boolean;
+    structure: boolean;
+    tieDowns: boolean;
+    bodywork: boolean;
+  };
+  observations?: string;
+  status: 'active' | 'completed';
 }

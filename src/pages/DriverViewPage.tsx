@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { RouteItem } from '../types';
+import { RouteItem, Vehicle, DailyLog } from '../types';
 import { useCollection } from '../lib/useCollection';
-import { MapPin, CheckCircle, AlertTriangle, Truck, Navigation, Package, XCircle, LogOut, BellRing, X, Camera, Image as ImageIcon, Loader2 } from 'lucide-react';
+import { MapPin, CheckCircle, AlertTriangle, Truck, Navigation, Package, XCircle, LogOut, BellRing, X, Camera, Image as ImageIcon, Loader2, Clock, CarFront, ShieldCheck, Wrench, Eye, Box, AlertCircle } from 'lucide-react';
 import { auth, messaging, db, storage } from '../lib/firebase';
 import { signOut } from 'firebase/auth';
 import { getToken, onMessage } from 'firebase/messaging';
@@ -16,6 +16,22 @@ interface DriverViewPageProps {
 
 export default function DriverViewPage({ driverId, driverName, driverStatus }: DriverViewPageProps) {
   const { data: routes, update } = useCollection<RouteItem>('routes');
+  const { data: vehicles, update: updateVehicle } = useCollection<Vehicle>('vehicles');
+  const { data: dailyLogs, add: addDailyLog, update: updateDailyLog } = useCollection<DailyLog>('dailyLogs');
+
+  const [showVehicleSelection, setShowVehicleSelection] = useState(false);
+  const [showChecklist, setShowChecklist] = useState(false);
+  const [selectedVehicle, setSelectedVehicle] = useState<Vehicle | null>(null);
+  const [checklistInitialKm, setChecklistInitialKm] = useState(0);
+  const [checklistFinalKm, setChecklistFinalKm] = useState('');
+  const [observations, setObservations] = useState('');
+  const [checklist, setChecklist] = useState({
+    extinguisher: false, tools: false, seatbelt: false,
+    tires: false, oil: false, water: false, brakes: false, dashboardLights: false,
+    headlights: false, turnSignals: false, brakeLights: false, mirrors: false, wipers: false,
+    cleaning: false, doors: false, structure: false, tieDowns: false, bodywork: false,
+  });
+
   const [notificationStatus, setNotificationStatus] = useState<string>('default');
   const [notifiedRoutes, setNotifiedRoutes] = useState<string[]>([]);
   const [incomingRoute, setIncomingRoute] = useState<RouteItem | null>(null);
@@ -56,13 +72,54 @@ export default function DriverViewPage({ driverId, driverName, driverStatus }: D
   
   const toggleOnlineStatus = async () => {
     if (!driverId) return;
-    const newStatus = driverStatus === 'active' ? 'offline' : 'active';
-    try {
-      await updateDoc(doc(db, 'drivers', driverId), { status: newStatus });
-    } catch (error) {
-      console.error("Error updating status", error);
+    if (driverStatus === 'offline') {
+      setShowVehicleSelection(true);
+    } else {
+      try {
+        await updateDoc(doc(db, 'drivers', driverId), { status: 'offline' });
+      } catch (error) {
+        console.error("Error updating status", error);
+      }
     }
   };
+
+  const handleVehicleSelect = (vehicle: Vehicle) => {
+    setSelectedVehicle(vehicle);
+    setChecklistInitialKm(vehicle.initialKm || 0);
+    setShowVehicleSelection(false);
+    setShowChecklist(true);
+  };
+
+  const submitChecklist = async () => {
+    if (!driverId || !selectedVehicle) return;
+    try {
+      const todayStr = new Date().toISOString().split('T')[0];
+      await addDailyLog({
+        driverId,
+        driverName: driverName || 'Motorista',
+        vehicleId: selectedVehicle.id,
+        vehiclePlate: selectedVehicle.plate,
+        date: todayStr,
+        initialKm: checklistInitialKm,
+        checklist,
+        observations,
+        status: 'active'
+      });
+      await updateDoc(doc(db, 'drivers', driverId), { status: 'active', currentVehicle: selectedVehicle.id });
+      setShowChecklist(false);
+      setChecklist({
+        extinguisher: false, tools: false, seatbelt: false,
+        tires: false, oil: false, water: false, brakes: false, dashboardLights: false,
+        headlights: false, turnSignals: false, brakeLights: false, mirrors: false, wipers: false,
+        cleaning: false, doors: false, structure: false, tieDowns: false, bodywork: false,
+      });
+      setObservations('');
+    } catch (e) {
+      console.error(e);
+      alert("Erro ao iniciar o dia");
+    }
+  };
+
 
   useEffect(() => {
     if ('Notification' in window) {
@@ -240,6 +297,200 @@ export default function DriverViewPage({ driverId, driverName, driverStatus }: D
     }
   };
 
+  
+  const renderModals = () => {
+    return (
+      <>
+        {/* Vehicle Selection Modal */}
+        {showVehicleSelection && (
+          <div className="fixed inset-0 bg-slate-900/60 z-[60] flex flex-col p-4 backdrop-blur-sm">
+            <div className="bg-white rounded-2xl w-full max-w-md mx-auto shadow-2xl flex flex-col max-h-full overflow-hidden animate-in slide-in-from-bottom-4 duration-300">
+              <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+                <h3 className="font-bold text-lg text-slate-800">Escolha o Veículo</h3>
+                <button onClick={() => setShowVehicleSelection(false)} className="text-slate-400 p-1 rounded-lg hover:bg-slate-200">
+                  <X size={20} />
+                </button>
+              </div>
+              <div className="p-4 overflow-y-auto flex-1 space-y-3">
+                {vehicles?.filter(v => v.status === 'active').map(v => (
+                  <button 
+                    key={v.id} 
+                    onClick={() => handleVehicleSelect(v)}
+                    className="w-full flex items-center gap-4 p-4 border border-slate-200 rounded-xl hover:border-brand-cyan hover:bg-brand-cyan/5 transition-colors text-left"
+                  >
+                    <div className="w-12 h-12 bg-slate-100 rounded-xl flex items-center justify-center text-slate-500">
+                      {v.type === 'motorcycle' ? <CarFront size={24} /> : <Truck size={24} />}
+                    </div>
+                    <div>
+                      <div className="font-bold text-slate-800">{v.plate}</div>
+                      <div className="text-sm text-slate-500">{v.brand} {v.model}</div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Checklist Modal */}
+        {showChecklist && selectedVehicle && (
+          <div className="fixed inset-0 bg-slate-900/60 z-[70] flex flex-col p-4 backdrop-blur-sm">
+            <div className="bg-white rounded-2xl w-full max-w-lg mx-auto shadow-2xl flex flex-col max-h-full overflow-hidden animate-in zoom-in-95 duration-300">
+              <div className="p-4 border-b border-slate-100 bg-brand-cyan text-white">
+                <h3 className="font-bold text-lg">Checklist Diário</h3>
+                <p className="text-white/80 text-sm">Veículo: {selectedVehicle.plate}</p>
+              </div>
+              
+              <div className="p-5 overflow-y-auto flex-1 space-y-6 bg-slate-50">
+                <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+                  <label className="block text-sm font-semibold text-slate-700 mb-2">KM Atual (Inicial)</label>
+                  <input 
+                    type="number" 
+                    value={checklistInitialKm}
+                    onChange={(e) => setChecklistInitialKm(parseInt(e.target.value) || 0)}
+                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-brand-cyan focus:ring-1 focus:ring-brand-cyan"
+                  />
+                </div>
+
+                {/* 1. SEGURANÇA */}
+                <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+                  <h4 className="font-bold text-slate-800 mb-3 flex items-center gap-2"><ShieldCheck size={18} className="text-emerald-500"/> 1. Segurança</h4>
+                  <div className="space-y-3">
+                    <label className="flex items-center gap-3">
+                      <input type="checkbox" checked={checklist.extinguisher} onChange={e => setChecklist({...checklist, extinguisher: e.target.checked})} className="w-5 h-5 rounded border-slate-300 text-brand-cyan focus:ring-brand-cyan" />
+                      <span className="text-sm text-slate-700">Extintor de incêndio (validade/manômetro verde)</span>
+                    </label>
+                    <label className="flex items-center gap-3">
+                      <input type="checkbox" checked={checklist.tools} onChange={e => setChecklist({...checklist, tools: e.target.checked})} className="w-5 h-5 rounded border-slate-300 text-brand-cyan focus:ring-brand-cyan" />
+                      <span className="text-sm text-slate-700">Kit ferramentas (Estepe, macaco, chave, triângulo)</span>
+                    </label>
+                    <label className="flex items-center gap-3">
+                      <input type="checkbox" checked={checklist.seatbelt} onChange={e => setChecklist({...checklist, seatbelt: e.target.checked})} className="w-5 h-5 rounded border-slate-300 text-brand-cyan focus:ring-brand-cyan" />
+                      <span className="text-sm text-slate-700">Cinto de segurança funcionando</span>
+                    </label>
+                  </div>
+                </div>
+
+                {/* 2. MECÂNICA E NÍVEIS */}
+                <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+                  <h4 className="font-bold text-slate-800 mb-3 flex items-center gap-2"><Wrench size={18} className="text-blue-500"/> 2. Mecânica e Níveis</h4>
+                  <div className="space-y-3">
+                    <label className="flex items-center gap-3">
+                      <input type="checkbox" checked={checklist.tires} onChange={e => setChecklist({...checklist, tires: e.target.checked})} className="w-5 h-5 rounded border-slate-300 text-brand-cyan focus:ring-brand-cyan" />
+                      <span className="text-sm text-slate-700">Pneus (calibragem e sulcos)</span>
+                    </label>
+                    <label className="flex items-center gap-3">
+                      <input type="checkbox" checked={checklist.oil} onChange={e => setChecklist({...checklist, oil: e.target.checked})} className="w-5 h-5 rounded border-slate-300 text-brand-cyan focus:ring-brand-cyan" />
+                      <span className="text-sm text-slate-700">Nível de óleo do motor</span>
+                    </label>
+                    <label className="flex items-center gap-3">
+                      <input type="checkbox" checked={checklist.water} onChange={e => setChecklist({...checklist, water: e.target.checked})} className="w-5 h-5 rounded border-slate-300 text-brand-cyan focus:ring-brand-cyan" />
+                      <span className="text-sm text-slate-700">Nível da água/arrefecimento</span>
+                    </label>
+                    <label className="flex items-center gap-3">
+                      <input type="checkbox" checked={checklist.brakes} onChange={e => setChecklist({...checklist, brakes: e.target.checked})} className="w-5 h-5 rounded border-slate-300 text-brand-cyan focus:ring-brand-cyan" />
+                      <span className="text-sm text-slate-700">Sistema de freios (teste de pedal)</span>
+                    </label>
+                    <label className="flex items-center gap-3">
+                      <input type="checkbox" checked={checklist.dashboardLights} onChange={e => setChecklist({...checklist, dashboardLights: e.target.checked})} className="w-5 h-5 rounded border-slate-300 text-brand-cyan focus:ring-brand-cyan" />
+                      <span className="text-sm text-slate-700">Painel (sem luzes de alerta acesas)</span>
+                    </label>
+                  </div>
+                </div>
+
+                {/* 3. ILUMINAÇÃO */}
+                <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+                  <h4 className="font-bold text-slate-800 mb-3 flex items-center gap-2"><Eye size={18} className="text-amber-500"/> 3. Iluminação e Visibilidade</h4>
+                  <div className="space-y-3">
+                    <label className="flex items-center gap-3">
+                      <input type="checkbox" checked={checklist.headlights} onChange={e => setChecklist({...checklist, headlights: e.target.checked})} className="w-5 h-5 rounded border-slate-300 text-brand-cyan focus:ring-brand-cyan" />
+                      <span className="text-sm text-slate-700">Faróis (alto e baixo)</span>
+                    </label>
+                    <label className="flex items-center gap-3">
+                      <input type="checkbox" checked={checklist.turnSignals} onChange={e => setChecklist({...checklist, turnSignals: e.target.checked})} className="w-5 h-5 rounded border-slate-300 text-brand-cyan focus:ring-brand-cyan" />
+                      <span className="text-sm text-slate-700">Setas (dianteiras e traseiras)</span>
+                    </label>
+                    <label className="flex items-center gap-3">
+                      <input type="checkbox" checked={checklist.brakeLights} onChange={e => setChecklist({...checklist, brakeLights: e.target.checked})} className="w-5 h-5 rounded border-slate-300 text-brand-cyan focus:ring-brand-cyan" />
+                      <span className="text-sm text-slate-700">Luz de freio e luz de ré</span>
+                    </label>
+                    <label className="flex items-center gap-3">
+                      <input type="checkbox" checked={checklist.mirrors} onChange={e => setChecklist({...checklist, mirrors: e.target.checked})} className="w-5 h-5 rounded border-slate-300 text-brand-cyan focus:ring-brand-cyan" />
+                      <span className="text-sm text-slate-700">Retrovisores (ajustados e íntegros)</span>
+                    </label>
+                    <label className="flex items-center gap-3">
+                      <input type="checkbox" checked={checklist.wipers} onChange={e => setChecklist({...checklist, wipers: e.target.checked})} className="w-5 h-5 rounded border-slate-300 text-brand-cyan focus:ring-brand-cyan" />
+                      <span className="text-sm text-slate-700">Limpadores e esguichos</span>
+                    </label>
+                  </div>
+                </div>
+
+                {/* 4. COMPARTIMENTO DE CARGA */}
+                <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+                  <h4 className="font-bold text-slate-800 mb-3 flex items-center gap-2"><Box size={18} className="text-indigo-500"/> 4. Compartimento de Carga</h4>
+                  <div className="space-y-3">
+                    <label className="flex items-center gap-3">
+                      <input type="checkbox" checked={checklist.cleaning} onChange={e => setChecklist({...checklist, cleaning: e.target.checked})} className="w-5 h-5 rounded border-slate-300 text-brand-cyan focus:ring-brand-cyan" />
+                      <span className="text-sm text-slate-700">Limpeza interna</span>
+                    </label>
+                    <label className="flex items-center gap-3">
+                      <input type="checkbox" checked={checklist.doors} onChange={e => setChecklist({...checklist, doors: e.target.checked})} className="w-5 h-5 rounded border-slate-300 text-brand-cyan focus:ring-brand-cyan" />
+                      <span className="text-sm text-slate-700">Vedação e travas</span>
+                    </label>
+                    <label className="flex items-center gap-3">
+                      <input type="checkbox" checked={checklist.structure} onChange={e => setChecklist({...checklist, structure: e.target.checked})} className="w-5 h-5 rounded border-slate-300 text-brand-cyan focus:ring-brand-cyan" />
+                      <span className="text-sm text-slate-700">Estrutura interna</span>
+                    </label>
+                    <label className="flex items-center gap-3">
+                      <input type="checkbox" checked={checklist.tieDowns} onChange={e => setChecklist({...checklist, tieDowns: e.target.checked})} className="w-5 h-5 rounded border-slate-300 text-brand-cyan focus:ring-brand-cyan" />
+                      <span className="text-sm text-slate-700">Equipamentos de amarração</span>
+                    </label>
+                  </div>
+                </div>
+
+                {/* 5. LATARIA E OBS */}
+                <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+                  <h4 className="font-bold text-slate-800 mb-3 flex items-center gap-2"><AlertCircle size={18} className="text-purple-500"/> 5. Lataria e Observações</h4>
+                  <div className="space-y-4">
+                    <label className="flex items-center gap-3">
+                      <input type="checkbox" checked={checklist.bodywork} onChange={e => setChecklist({...checklist, bodywork: e.target.checked})} className="w-5 h-5 rounded border-slate-300 text-brand-cyan focus:ring-brand-cyan" />
+                      <span className="text-sm text-slate-700">Estado geral da lataria</span>
+                    </label>
+                    
+                    <div>
+                      <label className="block text-sm font-semibold text-slate-700 mb-2">Observações</label>
+                      <textarea
+                        value={observations}
+                        onChange={(e) => setObservations(e.target.value)}
+                        placeholder="Algum problema encontrado? Detalhe aqui..."
+                        className="w-full p-3 border border-slate-200 rounded-xl text-sm outline-none focus:border-brand-cyan min-h-[80px]"
+                      ></textarea>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-4 border-t border-slate-100 flex gap-3 bg-white">
+                <button 
+                  onClick={() => setShowChecklist(false)}
+                  className="flex-1 py-3.5 bg-slate-100 text-slate-700 rounded-xl font-bold"
+                >
+                  Cancelar
+                </button>
+                <button 
+                  onClick={submitChecklist}
+                  className="flex-1 py-3.5 bg-brand-cyan hover:bg-brand-blue text-white rounded-xl font-bold transition-colors"
+                >
+                  Finalizar
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </>
+    );
+  };
+
   const formatRouteId = (route: RouteItem) => {
     if (route.routeNumber) {
       return String(route.routeNumber).padStart(7, '0');
@@ -250,6 +501,7 @@ export default function DriverViewPage({ driverId, driverName, driverStatus }: D
   if (activeRoute) {
     return (
       <div className="flex flex-col min-h-screen bg-slate-50 font-sans pb-20">
+        {renderModals()}
         <div className="bg-white shadow-sm p-4 sticky top-0 z-10 border-b border-slate-200">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-brand-cyan/10 rounded-full flex items-center justify-center text-brand-cyan">
@@ -586,11 +838,48 @@ export default function DriverViewPage({ driverId, driverName, driverStatus }: D
                 <span className="text-xs text-slate-500 font-medium uppercase tracking-wider">Distância</span>
               </div>
             </div>
+            
+            <div className="mb-6">
+              <label className="block text-sm font-semibold text-slate-700 mb-2">KM Final do Veículo</label>
+              <input 
+                type="number" 
+                value={checklistFinalKm}
+                onChange={(e) => setChecklistFinalKm(e.target.value)}
+                placeholder="Ex: 150200"
+                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+              />
+            </div>
 
             <button 
-              onClick={() => {
-                if(driverStatus !== 'offline') toggleOnlineStatus(); // Go offline automatically
+              onClick={async () => {
+                if (!checklistFinalKm) {
+                  alert('Por favor, insira o KM Final.');
+                  return;
+                }
+                const finalKmNum = parseInt(checklistFinalKm);
+                
+                // Find active daily log
+                const todayStr = new Date().toISOString().split('T')[0];
+                const activeLog = dailyLogs?.find(l => l.driverId === driverId && l.status === 'active' && l.date === todayStr);
+                
+                if (activeLog) {
+                  await updateDailyLog(activeLog.id, {
+                    finalKm: finalKmNum,
+                    status: 'completed'
+                  });
+                  // Update vehicle initial KM
+                  if (activeLog.vehicleId) {
+                    await updateVehicle(activeLog.vehicleId, {
+                      initialKm: finalKmNum
+                    });
+                  }
+                }
+
+                if(driverStatus !== 'offline') {
+                  await updateDoc(doc(db, 'drivers', driverId!), { status: 'offline' });
+                }
                 setShowEndOfDay(false);
+                setChecklistFinalKm('');
               }}
               className="w-full bg-slate-800 hover:bg-slate-900 text-white font-bold py-3.5 rounded-xl transition-colors active:scale-95"
             >
@@ -604,6 +893,7 @@ export default function DriverViewPage({ driverId, driverName, driverStatus }: D
 
   return (
     <div className="flex flex-col min-h-screen bg-slate-50 font-sans">
+      {renderModals()}
       {renderEndOfDaySummary()}
       <div className="bg-white shadow-sm p-5 sticky top-0 z-10 flex items-center justify-between border-b border-slate-200">
         <div>
