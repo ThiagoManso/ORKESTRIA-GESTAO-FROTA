@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
 import { Package, MapPin, FileText, Send, CheckCircle, ArrowLeft, Calendar } from 'lucide-react';
+import { useMapsLibrary } from '@vis.gl/react-google-maps';
 import { collection, addDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 
 export default function ExternalRequestPage() {
+  const geocodingLibrary = useMapsLibrary('geocoding');
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [requestData, setRequestData] = useState({
@@ -21,8 +23,26 @@ export default function ExternalRequestPage() {
     e.preventDefault();
     setIsSubmitting(true);
     try {
+      let lat = null;
+      let lng = null;
+      
+      if (geocodingLibrary && requestData.address) {
+        try {
+          const geocoder = new geocodingLibrary.Geocoder();
+          const response = await geocoder.geocode({ address: requestData.address });
+          if (response.results && response.results[0]) {
+            lat = response.results[0].geometry.location.lat();
+            lng = response.results[0].geometry.location.lng();
+          }
+        } catch (geocodeError) {
+          console.warn("Geocoding failed for address:", requestData.address, geocodeError);
+        }
+      }
+
       await addDoc(collection(db, 'external_requests'), {
         ...requestData,
+        lat,
+        lng,
         status: 'pending',
         read: false,
         createdAt: new Date().toISOString()

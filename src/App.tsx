@@ -35,6 +35,14 @@ export default function App() {
     } else if (params.get('view') === 'driver') {
       setIsDriver(true);
     }
+
+    const handleNavigate = (e: any) => {
+      if (e.detail) {
+        setCurrentView(e.detail as ViewState);
+      }
+    };
+    window.addEventListener('navigate', handleNavigate);
+    return () => window.removeEventListener('navigate', handleNavigate);
   }, []);
 
   if (isExternal) {

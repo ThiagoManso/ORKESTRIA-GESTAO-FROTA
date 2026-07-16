@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { Map, AdvancedMarker, Pin } from '@vis.gl/react-google-maps';
 import { useCollection } from '../lib/useCollection';
-import { RouteItem } from '../types';
-import { Building, Truck } from 'lucide-react';
+import { RouteItem, ExternalRequest } from '../types';
+import { useMap, useMapsLibrary } from '@vis.gl/react-google-maps';
+import { Building, Truck, MousePointer2, Plus } from 'lucide-react';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 
@@ -10,10 +11,79 @@ export default function MapPage() {
   type FilterType = 'all' | 'unassigned' | 'assigned' | 'completed';
   const { data: routes } = useCollection<RouteItem>('routes');
   const { data: drivers } = useCollection<any>('drivers');
+  const { data: externalRequests } = useCollection<ExternalRequest>('external_requests');
+  const map = useMap('map_operation_view');
+  const drawingLib = useMapsLibrary('drawing');
+  const geometryLib = useMapsLibrary('geometry');
+  const [isSelectionMode, setIsSelectionMode] = useState(false);
+  const [selectedRequestIds, setSelectedRequestIds] = useState<string[]>([]);
+  const [drawingManager, setDrawingManager] = useState<any>(null);
   const [selectedRoute, setSelectedRoute] = useState<RouteItem | null>(null);
   const [selectedDriver, setSelectedDriver] = useState<any | null>(null);
   const [filter, setFilter] = useState<FilterType>('all');
   const [matrizLocation, setMatrizLocation] = useState<{lat: number, lng: number, address: string} | null>(null);
+
+
+  useEffect(() => {
+    if (!map || !drawingLib || !geometryLib) return;
+
+    if (isSelectionMode) {
+      if (!drawingManager) {
+        const manager = new drawingLib.DrawingManager({
+          drawingMode: drawingLib.OverlayType.RECTANGLE,
+          drawingControl: false,
+          rectangleOptions: {
+            fillColor: '#3b82f6',
+            fillOpacity: 0.2,
+            strokeWeight: 2,
+            strokeColor: '#3b82f6',
+            clickable: false,
+            editable: false,
+            zIndex: 1,
+          },
+        });
+        
+        manager.setMap(map);
+        setDrawingManager(manager);
+
+        google.maps.event.addListener(manager, 'overlaycomplete', (event: any) => {
+          if (event.type === drawingLib.OverlayType.RECTANGLE) {
+            const bounds = event.overlay.getBounds();
+            
+            // Find all pending external requests inside the bounds
+            const selected = externalRequests.filter(req => {
+              if (req.status === 'pending' && req.lat && req.lng) {
+                const pt = new google.maps.LatLng(req.lat, req.lng);
+                return bounds.contains(pt);
+              }
+              return false;
+            });
+            
+            setSelectedRequestIds(prev => {
+              const newIds = new Set(prev);
+              selected.forEach(req => newIds.add(req.id));
+              return Array.from(newIds);
+            });
+            
+            // Remove the drawn rectangle after selection
+            event.overlay.setMap(null);
+          }
+        });
+      } else {
+        drawingManager.setMap(map);
+        drawingManager.setDrawingMode(drawingLib.OverlayType.RECTANGLE);
+      }
+    } else {
+      if (drawingManager) {
+        drawingManager.setMap(null);
+      }
+      setSelectedRequestIds([]);
+    }
+    
+    return () => {
+      if (drawingManager) drawingManager.setMap(null);
+    };
+  }, [map, drawingLib, geometryLib, isSelectionMode, externalRequests, drawingManager]);
 
   useEffect(() => {
     const fetchSettings = async () => {
@@ -28,6 +98,24 @@ export default function MapPage() {
     };
     fetchSettings();
   }, []);
+
+
+  const handleGenerateRoute = () => {
+    localStorage.setItem('mapSelectedRequests', JSON.stringify(selectedRequestIds));
+    const urlParams = new URLSearchParams(window.location.search);
+    urlParams.set('view', 'dashboard');
+    // Using global event or just reload, but since App.tsx is root, we can trigger a state change 
+    // or since this is a demo, doing a window.location change would reset states, 
+    // Wait, the best way without props is to dispatch a custom event or click the sidebar link.
+    // Let's use a custom event or simply click the routes link!
+    const routesBtn = document.querySelector('button[title="Rotas"]') || document.querySelector('a[href="#routes"]');
+    if (routesBtn) {
+      (routesBtn as HTMLElement).click();
+    } else {
+      // Fallback if we cannot find the button
+      window.dispatchEvent(new CustomEvent('navigate', { detail: 'routes' }));
+    }
+  };
 
   const getRouteCategory = (route: RouteItem): 'unassigned' | 'assigned' | 'completed' => {
     if (route.status === 'completed') return 'completed';
@@ -56,7 +144,17 @@ export default function MapPage() {
           <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Mapa de Operação</h1>
           <p className="text-sm text-slate-500 mt-1">Visão em tempo real do status das rotas</p>
         </div>
+        
         <div className="flex gap-2 items-center text-sm font-medium overflow-x-auto pb-1 sm:pb-0">
+          <button
+            onClick={() => setIsSelectionMode(!isSelectionMode)}
+            className={`flex items-center gap-2 px-3 py-1.5 rounded-full border transition-colors whitespace-nowrap ${isSelectionMode ? 'bg-blue-600 text-white border-blue-600 shadow-md' : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'}`}
+          >
+            <MousePointer2 size={16} />
+            <span>Seleção (Arrastar)</span>
+          </button>
+          <div className="w-px h-6 bg-slate-200 mx-1"></div>
+
           <button 
             onClick={() => { setFilter('all'); setSelectedRoute(null); setSelectedDriver(null); }}
             className={`flex items-center gap-2 px-3 py-1.5 rounded-full border transition-colors whitespace-nowrap ${filter === 'all' ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}
@@ -107,18 +205,67 @@ export default function MapPage() {
             </AdvancedMarker>
           )}
 
-          {filteredRoutes.map((route) => {
-            if (!route.lat || !route.lng) return null;
-            const color = getMarkerColor(route);
+          {/* External Requests (Pending) */}
+          {(filter === 'all' || filter === 'unassigned') && externalRequests?.map((req) => {
+            if (req.status !== 'pending' || !req.lat || !req.lng) return null;
+            const isSelected = selectedRequestIds.includes(req.id);
             return (
               <AdvancedMarker
-                key={route.id}
-                position={{ lat: route.lat, lng: route.lng }}
-                onClick={() => { setSelectedRoute(route); setSelectedDriver(null); }}
+                key={`ext-${req.id}`}
+                position={{ lat: req.lat, lng: req.lng }}
+                onClick={() => {
+                  if (isSelectionMode) {
+                    setSelectedRequestIds(prev => prev.includes(req.id) ? prev.filter(id => id !== req.id) : [...prev, req.id]);
+                  }
+                }}
+                zIndex={isSelected ? 100 : 10}
               >
-                <Pin background={color} borderColor={color} glyphColor="#fff" />
+                <div className={`transition-transform ${isSelected ? 'scale-125' : 'hover:scale-110'}`}>
+                  <Pin background={isSelected ? '#2563eb' : '#f59e0b'} borderColor={isSelected ? '#1d4ed8' : '#d97706'} glyphColor="#fff" />
+                  {isSelected && (
+                    <div className="absolute -top-2 -right-2 bg-blue-600 text-white text-[10px] w-4 h-4 rounded-full flex items-center justify-center font-bold border border-white">✓</div>
+                  )}
+                </div>
               </AdvancedMarker>
             );
+          })}
+
+          {/* Route Stops */}
+          {routes?.map(route => {
+            if (route.status === 'completed' && filter !== 'all' && filter !== 'completed') return null;
+            
+            return route.stopDetails?.map(stop => {
+               if (!stop.lat || !stop.lng) return null;
+               
+               let show = false;
+               let color = '#3b82f6'; // blue default
+               
+               if (stop.status === 'completed' || route.status === 'completed') {
+                 if (filter === 'all' || filter === 'completed') {
+                    show = true;
+                    color = '#10b981'; // green
+                 }
+               } else {
+                 if (filter === 'all' || filter === 'assigned') {
+                    show = true;
+                    color = '#3b82f6'; // blue
+                 }
+               }
+
+               if (!show) return null;
+               
+               return (
+                 <AdvancedMarker
+                   key={`stop-${route.id}-${stop.id}`}
+                   position={{ lat: stop.lat, lng: stop.lng }}
+                   zIndex={5}
+                 >
+                   <div className="hover:scale-110 transition-transform">
+                     <Pin background={color} borderColor={color} glyphColor="#fff" />
+                   </div>
+                 </AdvancedMarker>
+               );
+            });
           })}
 
           {drivers?.filter((d: any) => (d.status === 'active' || d.status === 'on_route') && d.location?.lat && d.location?.lng).map((driver: any) => (
@@ -134,6 +281,18 @@ export default function MapPage() {
             </AdvancedMarker>
           ))}
         </Map>
+
+        {selectedRequestIds.length > 0 && (
+          <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-50">
+            <button
+              onClick={handleGenerateRoute}
+              className="bg-primary hover:bg-primary/90 text-white px-6 py-3 rounded-full shadow-xl font-bold flex items-center gap-2 transition-transform hover:scale-105"
+            >
+              <Plus size={20} />
+              Gerar Rota ({selectedRequestIds.length})
+            </button>
+          </div>
+        )}
 
         {selectedDriver && (
           <div className="absolute bottom-6 left-6 bg-white p-4 rounded-xl shadow-lg border border-slate-100 w-80">

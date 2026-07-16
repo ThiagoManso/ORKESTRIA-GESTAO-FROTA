@@ -69,6 +69,50 @@ export default function RoutesPage() {
   });
   
   const [isCalculating, setIsCalculating] = useState(false);
+
+  useEffect(() => {
+    // Check if we arrived here from Map selection
+    const mapSelection = localStorage.getItem('mapSelectedRequests');
+    if (mapSelection && externalRequests) {
+      try {
+        const selectedIds = JSON.parse(mapSelection);
+        if (Array.isArray(selectedIds) && selectedIds.length > 0) {
+          const selectedReqs = externalRequests.filter(r => selectedIds.includes(r.id));
+          if (selectedReqs.length > 0) {
+            const newStops = [];
+            const newMeta = [];
+            
+            selectedReqs.forEach(req => {
+              newStops.push(req.address);
+              newMeta.push({
+                orderNumber: req.orderNumber || req.osNumber || '',
+                customerName: req.requesterName || '',
+                customerPhone: req.contactPhone || '',
+                observation: req.observations || '',
+                externalRequestId: req.id,
+                lat: req.lat || null,
+                lng: req.lng || null
+              });
+            });
+            
+            setNewRoute(prev => ({
+              ...prev,
+              intermediates: newStops,
+              intermediateMetadata: newMeta,
+              stops: Math.max(1, newStops.length)
+            }));
+            
+            setSelectedRequestIds(selectedIds);
+            setIsModalOpen(true);
+          }
+        }
+      } catch (e) {
+        console.error("Error parsing map selection", e);
+      }
+      localStorage.removeItem('mapSelectedRequests');
+    }
+  }, [externalRequests]);
+
   const routesLib = useMapsLibrary('routes');
 
   const calculateRouteData = async (routeData: any) => {
@@ -112,25 +156,48 @@ export default function RoutesPage() {
         const minutes = Math.floor((totalDuration % 3600) / 60);
         const formattedTime = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')} h`;
         
+
         let newIntermediates = routeData.intermediates || [];
         let newMetadata = routeData.intermediateMetadata || [];
         
+        let validIndices = newIntermediates.map((addr: string, idx: number) => addr.trim() !== '' ? idx : -1).filter((i: number) => i !== -1);
+        
         if (route.waypoint_order && route.waypoint_order.length > 0) {
-          const validIndices = (routeData.intermediates || []).map((addr: string, idx: number) => addr.trim() !== '' ? idx : -1).filter((i: number) => i !== -1);
-          
-          const originalAddresses = validIndices.map((idx: number) => (routeData.intermediates || [])[idx]);
-          const originalMetadata = validIndices.map((idx: number) => (routeData.intermediateMetadata || [])[idx] || {});
+          const originalAddresses = validIndices.map((idx: number) => newIntermediates[idx]);
+          const originalMetadata = validIndices.map((idx: number) => newMetadata[idx] || {});
           
           newIntermediates = route.waypoint_order.map((idx: number) => originalAddresses[idx]);
           newMetadata = route.waypoint_order.map((idx: number) => originalMetadata[idx]);
+        }
+        
+        // Extract lat/lng for intermediates from legs
+        // route.legs[i].end_location gives the coordinate of waypoint i
+        // route.legs[legs.length - 1].end_location gives destination
+        for(let i = 0; i < newIntermediates.length; i++) {
+          if (route.legs[i] && route.legs[i].end_location) {
+             if(!newMetadata[i]) newMetadata[i] = {};
+             newMetadata[i].lat = route.legs[i].end_location.lat();
+             newMetadata[i].lng = route.legs[i].end_location.lng();
+          }
+        }
+        
+        // Save destination lat/lng
+        const destLeg = route.legs[route.legs.length - 1];
+        let destinationLat, destinationLng;
+        if (destLeg && destLeg.end_location) {
+          destinationLat = destLeg.end_location.lat();
+          destinationLng = destLeg.end_location.lng();
         }
 
         return {
           intermediates: newIntermediates,
           intermediateMetadata: newMetadata,
           distance: Number(distanceKm.toFixed(1)),
-          estimatedTime: formattedTime
+          estimatedTime: formattedTime,
+          destinationLat,
+          destinationLng
         };
+
       }
     } catch (error: any) {
       console.error('Error calculating route:', error);
@@ -264,6 +331,7 @@ export default function RoutesPage() {
       formattedDate = d.toLocaleDateString('pt-BR');
     }
 
+
     const validIntermediates = finalIntermediates.map((addr, i) => ({ addr, meta: finalMetadata[i] || {} })).filter(item => item.addr.trim() !== '');
     const stopDetails = validIntermediates.map((item, index) => ({
       id: `stop-${index}`,
@@ -274,15 +342,20 @@ export default function RoutesPage() {
       customerPhone: item.meta.customerPhone || '',
       observation: item.meta.observation || '',
       externalRequestId: item.meta.externalRequestId || '',
+      lat: item.meta.lat || null,
+      lng: item.meta.lng || null,
     }));
 
     if (newRoute.destination && newRoute.destination.trim() !== '' && !newRoute.returnToMatriz) {
        stopDetails.push({
          id: `stop-${stopDetails.length}`,
          address: newRoute.destination,
-         status: 'pending' as const
+         status: 'pending' as const,
+         lat: (newRoute as any).destinationLat || null,
+         lng: (newRoute as any).destinationLng || null,
        });
     }
+
 
     const nextRouteNumber = routes && routes.length > 0 
       ? Math.max(...routes.map(r => r.routeNumber || 0)) + 1 
