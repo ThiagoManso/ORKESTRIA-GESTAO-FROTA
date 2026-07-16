@@ -3,7 +3,7 @@ import { Map, AdvancedMarker, Pin } from '@vis.gl/react-google-maps';
 import { useCollection } from '../lib/useCollection';
 import { RouteItem, ExternalRequest } from '../types';
 import { useMap, useMapsLibrary } from '@vis.gl/react-google-maps';
-import { Building, Truck, MousePointer2, Plus } from 'lucide-react';
+import { Building, Truck, MousePointer2, Plus, Calendar } from 'lucide-react';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 
@@ -21,6 +21,7 @@ export default function MapPage() {
   const [selectedRoute, setSelectedRoute] = useState<RouteItem | null>(null);
   const [selectedDriver, setSelectedDriver] = useState<any | null>(null);
   const [filter, setFilter] = useState<FilterType>('all');
+  const [filterDate, setFilterDate] = useState<string>('');
   const [matrizLocation, setMatrizLocation] = useState<{lat: number, lng: number, address: string} | null>(null);
 
 
@@ -52,7 +53,8 @@ export default function MapPage() {
             
             // Find all pending external requests inside the bounds
             const selected = externalRequests.filter(req => {
-              if (req.status === 'pending' && req.lat && req.lng) {
+              const matchesDate = !filterDate || req.scheduledDate === filterDate;
+              if (req.status === 'pending' && req.lat && req.lng && matchesDate) {
                 const pt = new google.maps.LatLng(req.lat, req.lng);
                 return bounds.contains(pt);
               }
@@ -83,7 +85,7 @@ export default function MapPage() {
     return () => {
       if (drawingManager) drawingManager.setMap(null);
     };
-  }, [map, drawingLib, geometryLib, isSelectionMode, externalRequests, drawingManager]);
+  }, [map, drawingLib, geometryLib, isSelectionMode, externalRequests, drawingManager, filterDate]);
 
   useEffect(() => {
     const fetchSettings = async () => {
@@ -208,6 +210,7 @@ export default function MapPage() {
           {/* External Requests (Pending) */}
           {(filter === 'all' || filter === 'unassigned') && externalRequests?.map((req) => {
             if (req.status !== 'pending' || !req.lat || !req.lng) return null;
+            if (filterDate && req.scheduledDate !== filterDate) return null;
             const isSelected = selectedRequestIds.includes(req.id);
             return (
               <AdvancedMarker
@@ -233,6 +236,7 @@ export default function MapPage() {
           {/* Route Stops */}
           {routes?.map(route => {
             if (route.status === 'completed' && filter !== 'all' && filter !== 'completed') return null;
+            if (filterDate && route.date !== filterDate) return null;
             
             return route.stopDetails?.map(stop => {
                if (!stop.lat || !stop.lng) return null;

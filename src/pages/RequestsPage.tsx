@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useCollection } from '../lib/useCollection';
 import { ExternalRequest } from '../types';
-import { Package, MapPin, CheckCircle, Clock, Search, Trash2, Calendar, Upload, Download, Plus } from 'lucide-react';
+import { Package, MapPin, CheckCircle, Clock, Search, Trash2, Calendar, Upload, Download, Plus, LayoutGrid, List as ListIcon, X } from 'lucide-react';
 import { useMapsLibrary } from '@vis.gl/react-google-maps';
 import { addDoc, collection } from 'firebase/firestore';
 import { db } from '../lib/firebase';
@@ -10,10 +10,25 @@ export default function RequestsPage() {
   const { data: requests, update, remove, loading } = useCollection<ExternalRequest>('external_requests');
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState<'all' | 'pending' | 'on_route' | 'completed'>('all');
+  const [filterDate, setFilterDate] = useState<string>(''); // YYYY-MM-DD
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [isImporting, setIsImporting] = useState(false);
   const [importProgress, setImportProgress] = useState(0);
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+  const [isModalOpen, setIsModalOpen] = useState(false);
   const geocodingLibrary = useMapsLibrary('geocoding');
+
+  // Manual form state
+  const [manualForm, setManualForm] = useState({
+    type: 'entrega' as 'coleta' | 'entrega',
+    address: '',
+    requesterName: '',
+    contactPhone: '',
+    osNumber: '',
+    orderNumber: '',
+    observations: '',
+    scheduledDate: ''
+  });
 
   useEffect(() => {
     if (requests) {
@@ -40,22 +55,41 @@ export default function RequestsPage() {
       req.orderNumber?.toLowerCase().includes(searchTerm.toLowerCase());
     
     const matchesStatus = filterStatus === 'all' || req.status === filterStatus;
+    const matchesDate = !filterDate || req.scheduledDate === filterDate;
 
-    return matchesSearch && matchesStatus;
+    return matchesSearch && matchesStatus && matchesDate;
   }).sort((a, b) => {
-      const dateA = a.scheduledDate ? new Date(a.scheduledDate).getTime() : new Date(a.createdAt).getTime();
-      const dateB = b.scheduledDate ? new Date(b.scheduledDate).getTime() : new Date(b.createdAt).getTime();
-      return dateA - dateB; // Crescente
+      // Sort by scheduled date first, then creation date
+      const dateA = a.scheduledDate ? new Date(a.scheduledDate).getTime() : 0;
+      const dateB = b.scheduledDate ? new Date(b.scheduledDate).getTime() : 0;
+      if (dateA !== dateB) return dateA - dateB; // Crescente
+      
+      const createdA = new Date(a.createdAt).getTime();
+      const createdB = new Date(b.createdAt).getTime();
+      return createdA - createdB;
   });
 
+  // Group by Date
+  const groupedRequests = filteredRequests?.reduce((acc, req) => {
+    const date = req.scheduledDate || 'sem_data';
+    if (!acc[date]) acc[date] = [];
+    acc[date].push(req);
+    return acc;
+  }, {} as Record<string, ExternalRequest[]>) || {};
+
+  const sortedDates = Object.keys(groupedRequests).sort((a, b) => {
+    if (a === 'sem_data') return 1;
+    if (b === 'sem_data') return -1;
+    return new Date(a).getTime() - new Date(b).getTime();
+  });
 
   const downloadCSVTemplate = () => {
-    const csvContent = "Tipo;Endereço;N° Pedido / OS;Nome;Telefone;Observação\nEx: entrega;Rua das Flores 123 - SP;1001;João Silva;11999999999;Entregar na portaria\nEx: coleta;Av Paulista 1000 - SP;OS-552;Maria Souza;11988888888;Retirar no galpão";
+    const csvContent = "Tipo;Endereço;N° Pedido / OS;Nome;Telefone;Observação;Data\nEx: entrega;Rua das Flores 123 - SP;1001;João Silva;11999999999;Entregar na portaria;2026-07-20\nEx: coleta;Av Paulista 1000 - SP;OS-552;Maria Souza;11988888888;Retirar no galpão;2026-07-21";
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.setAttribute('download', 'modelo_demandas.csv');
+    link.setAttribute('download', 'modelo_demandas_completo.csv');
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -91,6 +125,7 @@ export default function RequestsPage() {
           const name = row[3]?.trim() || '';
           const phone = row[4]?.trim() || '';
           const obs = row[5]?.trim() || '';
+          const dateStr = row[6]?.trim() || '';
 
           if (!address) continue;
 
@@ -107,7 +142,6 @@ export default function RequestsPage() {
             } catch (err) {
                console.warn("Geocode failed for", address, err);
             }
-            // Delay to avoid quota limits (google maps client side allows ~50 qps, 200ms is safe)
             await new Promise(r => setTimeout(r, 200));
           }
 
@@ -119,9 +153,9 @@ export default function RequestsPage() {
             requesterName: name,
             contactPhone: phone,
             observations: obs,
-            scheduledDate: '',
+            scheduledDate: dateStr,
             status: 'pending',
-            read: true, // Mark as read since it's imported by admin
+            read: true,
             createdAt: new Date().toISOString(),
             lat,
             lng
@@ -144,6 +178,48 @@ export default function RequestsPage() {
     reader.readAsText(file);
   };
 
+  const handleManualSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!manualForm.address) return;
+    
+    let lat = null;
+    let lng = null;
+
+    if (geocodingLibrary) {
+      const geocoder = new geocodingLibrary.Geocoder();
+      try {
+         const response = await geocoder.geocode({ address: manualForm.address });
+         if (response.results && response.results[0]) {
+           lat = response.results[0].geometry.location.lat();
+           lng = response.results[0].geometry.location.lng();
+         }
+      } catch (err) {
+         console.warn("Geocode failed for manual entry", manualForm.address, err);
+      }
+    }
+
+    await addDoc(collection(db, 'external_requests'), {
+      ...manualForm,
+      status: 'pending',
+      read: true,
+      createdAt: new Date().toISOString(),
+      lat,
+      lng
+    });
+
+    setIsModalOpen(false);
+    setManualForm({
+      type: 'entrega',
+      address: '',
+      requesterName: '',
+      contactPhone: '',
+      osNumber: '',
+      orderNumber: '',
+      observations: '',
+      scheduledDate: ''
+    });
+  };
+
   const handleGenerateRoute = () => {
     localStorage.setItem('mapSelectedRequests', JSON.stringify(selectedIds));
     const routesBtn = document.querySelector('button[title="Rotas"]') || document.querySelector('a[href="#routes"]');
@@ -158,14 +234,30 @@ export default function RequestsPage() {
     setSelectedIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
   };
 
+  const selectAllInDate = (date: string, reqs: ExternalRequest[]) => {
+    const ids = reqs.map(r => r.id);
+    const allSelected = ids.every(id => selectedIds.includes(id));
+    if (allSelected) {
+      setSelectedIds(prev => prev.filter(id => !ids.includes(id)));
+    } else {
+      setSelectedIds(prev => Array.from(new Set([...prev, ...ids])));
+    }
+  };
+
   const handleMarkConverted = async (id: string) => {
     await update(id, { status: 'on_route' });
   };
 
   const handleDelete = async (id: string) => {
-    if (window.confirm('Tem certeza que deseja excluir esta solicitação?')) {
+    if (window.confirm('Tem certeza que deseja excluir esta demanda?')) {
       await remove(id);
     }
+  };
+
+  const formatDateLabel = (dateStr: string) => {
+    if (dateStr === 'sem_data') return 'Sem Data Agendada';
+    const d = new Date(dateStr + 'T12:00:00');
+    return `${d.toLocaleDateString('pt-BR')} - ${d.toLocaleDateString('pt-BR', { weekday: 'long' })}`;
   };
 
   return (
@@ -173,18 +265,24 @@ export default function RequestsPage() {
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8 gap-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-800">Banco de Demandas</h1>
-          <p className="text-slate-500">Gerencie todas as paradas (Link Público, CSV, Manuual) pendentes para roteirização.</p>
+          <p className="text-slate-500">Gerencie todas as paradas (Público, CSV, Manual) pendentes para roteirização.</p>
         </div>
 
-        <div className="flex gap-3 w-full sm:w-auto mt-4 sm:mt-0">
+        <div className="flex flex-wrap gap-3 w-full sm:w-auto mt-4 sm:mt-0 items-center">
           {selectedIds.length > 0 && (
             <button 
               onClick={handleGenerateRoute}
               className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2.5 bg-primary text-white rounded-xl font-medium hover:bg-primary/90 transition-colors shadow-sm animate-in zoom-in"
             >
-              <Plus size={18} /> Roteirizar ({selectedIds.length})
+              <MapPin size={18} /> Roteirizar ({selectedIds.length})
             </button>
           )}
+          <button 
+            onClick={() => setIsModalOpen(true)}
+            className="flex-1 sm:flex-none flex justify-center items-center gap-2 px-4 py-2.5 bg-brand-cyan text-white rounded-xl font-medium hover:bg-brand-blue transition-colors shadow-sm"
+          >
+            <Plus size={18} /> Nova Demanda
+          </button>
           <button 
             onClick={downloadCSVTemplate}
             className="flex-1 sm:flex-none flex justify-center items-center gap-2 px-4 py-2.5 bg-white border border-slate-200 text-slate-700 rounded-xl font-medium hover:bg-slate-50 transition-colors shadow-sm"
@@ -199,8 +297,23 @@ export default function RequestsPage() {
               <div className="absolute bottom-0 left-0 h-1 bg-brand-cyan" style={{width: `${importProgress}%`}}></div>
             )}
           </label>
+          <div className="flex border border-slate-200 rounded-xl overflow-hidden shadow-sm bg-white ml-2">
+            <button 
+              onClick={() => setViewMode('grid')}
+              className={`p-2.5 transition-colors ${viewMode === 'grid' ? 'bg-slate-100 text-slate-800' : 'text-slate-400 hover:text-slate-600'}`}
+              title="Visão em Cards"
+            >
+              <LayoutGrid size={18} />
+            </button>
+            <button 
+              onClick={() => setViewMode('list')}
+              className={`p-2.5 transition-colors ${viewMode === 'list' ? 'bg-slate-100 text-slate-800' : 'text-slate-400 hover:text-slate-600'}`}
+              title="Visão em Lista"
+            >
+              <ListIcon size={18} />
+            </button>
+          </div>
         </div>
-
       </div>
 
       <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex flex-col h-[calc(100vh-200px)]">
@@ -216,6 +329,15 @@ export default function RequestsPage() {
             />
           </div>
           <div className="flex gap-2">
+            <div className="relative">
+              <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+              <input 
+                type="date"
+                value={filterDate}
+                onChange={(e) => setFilterDate(e.target.value)}
+                className="pl-9 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:border-brand-cyan focus:ring-1 focus:ring-brand-cyan outline-none shadow-sm font-medium text-slate-700"
+              />
+            </div>
             <select
               value={filterStatus}
               onChange={(e) => setFilterStatus(e.target.value as any)}
@@ -229,109 +351,317 @@ export default function RequestsPage() {
           </div>
         </div>
 
-        <div className="flex-1 overflow-auto p-4 sm:p-6 bg-slate-50/50">
+        <div className="flex-1 overflow-auto p-4 sm:p-6 bg-slate-50/50 custom-scrollbar">
           {filteredRequests?.length === 0 ? (
             <div className="h-full flex flex-col items-center justify-center text-slate-400 space-y-4">
               <Package size={48} className="text-slate-300" />
-              <p className="text-lg font-medium text-slate-500">Nenhuma solicitação encontrada</p>
+              <p className="text-lg font-medium text-slate-500">Nenhuma demanda encontrada</p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-              {filteredRequests?.map(request => (
-                
-                <div 
-                  key={request.id} 
-                  className={`rounded-xl border p-5 shadow-sm hover:shadow-md transition-all flex flex-col cursor-pointer ${selectedIds.includes(request.id) ? 'border-primary bg-primary/5 ring-1 ring-primary' : 'border-slate-200 bg-white'}`}
-                  onClick={() => toggleSelection(request.id)}
-                >
-
-                  <div className="flex justify-between items-start mb-4">
-
-                    <div className="flex items-center gap-2">
-                      <div className="mr-2" onClick={(e) => e.stopPropagation()}>
-                        <input 
-                          type="checkbox" 
-                          checked={selectedIds.includes(request.id)} 
-                          onChange={() => toggleSelection(request.id)}
-                          className="w-5 h-5 rounded border-slate-300 text-primary focus:ring-primary cursor-pointer"
-                        />
-                      </div>
-                      <div className={`p-2 rounded-lg ${request.type === 'coleta' ? 'bg-indigo-50 text-indigo-600' : 'bg-emerald-50 text-emerald-600'}`}>
-
-                        {request.type === 'coleta' ? <Package size={20} /> : <MapPin size={20} />}
-                      </div>
-                      <div>
-                        <span className="font-bold text-slate-800 capitalize">{request.type}</span>
-                        <div className="text-xs text-slate-500 flex items-center gap-1 mt-0.5">
-                          <Calendar size={12} className="text-brand-cyan" />
-                          <strong className="text-brand-cyan">{request.scheduledDate ? new Date(request.scheduledDate + 'T12:00:00').toLocaleDateString('pt-BR') : 'Sem data'}</strong>
-                        </div>
-                        <div className="text-[10px] text-slate-400 flex items-center gap-1 mt-0.5">
-                          <Clock size={10} />
-                          {new Date(request.createdAt).toLocaleString('pt-BR')}
-                        </div>
-                      </div>
-                    </div>
-                    <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${
-                      request.status === 'pending' ? 'bg-amber-100 text-amber-700' : 
-                      request.status === 'on_route' ? 'bg-blue-100 text-blue-700' :
-                      'bg-emerald-100 text-emerald-700'
-                    }`}>
-                      {request.status === 'pending' ? 'Pendente' : request.status === 'on_route' ? 'Em Rota' : 'Concluído'}
-                    </span>
-                  </div>
-
-                  <div className="flex-1 space-y-3 text-sm">
-                    <div>
-                      <span className="text-slate-400 block text-xs">Endereço:</span>
-                      <span className="font-medium text-slate-700">{request.address}</span>
-                    </div>
-                    <div className="grid grid-cols-2 gap-2">
-                      <div>
-                        <span className="text-slate-400 block text-xs">Nº Pedido/OS:</span>
-                        <span className="font-medium text-slate-700">{request.orderNumber || request.osNumber || '-'}</span>
-                      </div>
-                      <div>
-                        <span className="text-slate-400 block text-xs">Telefone:</span>
-                        <span className="font-medium text-slate-700">{request.contactPhone || '-'}</span>
-                      </div>
-                    </div>
-                    <div>
-                      <span className="text-slate-400 block text-xs">Solicitante:</span>
-                      <span className="font-medium text-slate-700">{request.requesterName || '-'}</span>
-                    </div>
-                    {request.observations && (
-                      <div className="pt-2 border-t border-slate-100">
-                        <span className="text-slate-400 block text-xs">Observações:</span>
-                        <span className="text-slate-600 italic">{request.observations}</span>
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="mt-5 pt-4 border-t border-slate-100 flex gap-2">
-                    {request.status === 'pending' && (
+            <div className="space-y-8">
+              {sortedDates.map(date => (
+                <div key={date} className="space-y-4">
+                  {/* Date Header */}
+                  <div className="flex items-center gap-3">
+                    <div className="h-px bg-slate-200 flex-1"></div>
+                    <div className="flex items-center gap-2 text-sm font-bold text-slate-600 bg-white px-4 py-1.5 rounded-full border border-slate-200 shadow-sm capitalize">
+                      📅 {formatDateLabel(date)}
                       <button 
-                        onClick={(e) => { e.stopPropagation(); handleMarkConverted(request.id); }}
-                        className="flex-1 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-semibold text-sm transition-colors flex items-center justify-center gap-2"
-                        title="Marcar manualmente como resolvido"
+                        onClick={() => selectAllInDate(date, groupedRequests[date])}
+                        className="ml-2 text-xs text-brand-cyan hover:underline font-semibold"
                       >
-                        <CheckCircle size={16} /> Resolvido
+                        (Selecionar Todos)
                       </button>
-                    )}
-                    <button 
-                      onClick={(e) => { e.stopPropagation(); handleDelete(request.id); }}
-                      className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
-                      title="Excluir"
-                    >
-                      <Trash2 size={18} />
-                    </button>
+                    </div>
+                    <div className="h-px bg-slate-200 flex-1"></div>
                   </div>
+
+                  {viewMode === 'grid' ? (
+                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                      {groupedRequests[date].map(request => (
+                        <div 
+                          key={request.id} 
+                          className={`rounded-xl border p-5 shadow-sm hover:shadow-md transition-all flex flex-col cursor-pointer ${selectedIds.includes(request.id) ? 'border-primary bg-primary/5 ring-1 ring-primary' : 'border-slate-200 bg-white'}`}
+                          onClick={() => toggleSelection(request.id)}
+                        >
+                          <div className="flex justify-between items-start mb-4">
+                            <div className="flex items-center gap-2">
+                              <div className="mr-2" onClick={(e) => e.stopPropagation()}>
+                                <input 
+                                  type="checkbox" 
+                                  checked={selectedIds.includes(request.id)} 
+                                  onChange={() => toggleSelection(request.id)}
+                                  className="w-5 h-5 rounded border-slate-300 text-primary focus:ring-primary cursor-pointer"
+                                />
+                              </div>
+                              <div className={`p-2 rounded-lg ${request.type === 'coleta' ? 'bg-indigo-50 text-indigo-600' : 'bg-emerald-50 text-emerald-600'}`}>
+                                {request.type === 'coleta' ? <Package size={20} /> : <MapPin size={20} />}
+                              </div>
+                              <div>
+                                <span className="font-bold text-slate-800 capitalize">{request.type}</span>
+                                <div className="text-[10px] text-slate-400 flex items-center gap-1 mt-0.5">
+                                  <Clock size={10} />
+                                  {new Date(request.createdAt).toLocaleString('pt-BR')}
+                                </div>
+                              </div>
+                            </div>
+                            <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${
+                              request.status === 'pending' ? 'bg-amber-100 text-amber-700' : 
+                              request.status === 'on_route' ? 'bg-blue-100 text-blue-700' :
+                              'bg-emerald-100 text-emerald-700'
+                            }`}>
+                              {request.status === 'pending' ? 'Pendente' : request.status === 'on_route' ? 'Em Rota' : 'Concluído'}
+                            </span>
+                          </div>
+
+                          <div className="flex-1 space-y-3 text-sm">
+                            <div>
+                              <span className="text-slate-400 block text-xs">Endereço:</span>
+                              <span className="font-medium text-slate-700">{request.address}</span>
+                            </div>
+                            <div className="grid grid-cols-2 gap-2">
+                              <div>
+                                <span className="text-slate-400 block text-xs">Nº Pedido/OS:</span>
+                                <span className="font-medium text-slate-700">{request.orderNumber || request.osNumber || '-'}</span>
+                              </div>
+                              <div>
+                                <span className="text-slate-400 block text-xs">Telefone:</span>
+                                <span className="font-medium text-slate-700">{request.contactPhone || '-'}</span>
+                              </div>
+                            </div>
+                            <div>
+                              <span className="text-slate-400 block text-xs">Solicitante:</span>
+                              <span className="font-medium text-slate-700">{request.requesterName || '-'}</span>
+                            </div>
+                            {request.observations && (
+                              <div className="pt-2 border-t border-slate-100">
+                                <span className="text-slate-400 block text-xs">Observações:</span>
+                                <span className="text-slate-600 italic">{request.observations}</span>
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="mt-5 pt-4 border-t border-slate-100 flex gap-2">
+                            {request.status === 'pending' && (
+                              <button 
+                                onClick={(e) => { e.stopPropagation(); handleMarkConverted(request.id); }}
+                                className="flex-1 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-semibold text-sm transition-colors flex items-center justify-center gap-2"
+                                title="Marcar manualmente como resolvido"
+                              >
+                                <CheckCircle size={16} /> Resolvido
+                              </button>
+                            )}
+                            <button 
+                              onClick={(e) => { e.stopPropagation(); handleDelete(request.id); }}
+                              className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                              title="Excluir"
+                            >
+                              <Trash2 size={18} />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
+                      <table className="w-full text-left text-sm">
+                        <thead className="bg-slate-50 text-slate-500 border-b border-slate-200">
+                          <tr>
+                            <th className="p-3 w-12 text-center">
+                              <input 
+                                type="checkbox" 
+                                checked={groupedRequests[date].every(r => selectedIds.includes(r.id))}
+                                onChange={() => selectAllInDate(date, groupedRequests[date])}
+                                className="w-4 h-4 rounded border-slate-300 text-primary focus:ring-primary cursor-pointer"
+                              />
+                            </th>
+                            <th className="p-3 font-semibold">Status</th>
+                            <th className="p-3 font-semibold">Tipo</th>
+                            <th className="p-3 font-semibold">Endereço</th>
+                            <th className="p-3 font-semibold">Cliente</th>
+                            <th className="p-3 font-semibold">OS/Pedido</th>
+                            <th className="p-3 w-16 text-center font-semibold">Ações</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {groupedRequests[date].map(request => (
+                            <tr 
+                              key={request.id} 
+                              className={`hover:bg-slate-50 cursor-pointer ${selectedIds.includes(request.id) ? 'bg-primary/5' : ''}`}
+                              onClick={() => toggleSelection(request.id)}
+                            >
+                              <td className="p-3 text-center" onClick={(e) => e.stopPropagation()}>
+                                <input 
+                                  type="checkbox" 
+                                  checked={selectedIds.includes(request.id)} 
+                                  onChange={() => toggleSelection(request.id)}
+                                  className="w-4 h-4 rounded border-slate-300 text-primary focus:ring-primary cursor-pointer"
+                                />
+                              </td>
+                              <td className="p-3">
+                                <span className={`px-2 py-1 rounded-full text-[10px] font-semibold ${
+                                  request.status === 'pending' ? 'bg-amber-100 text-amber-700' : 
+                                  request.status === 'on_route' ? 'bg-blue-100 text-blue-700' :
+                                  'bg-emerald-100 text-emerald-700'
+                                }`}>
+                                  {request.status === 'pending' ? 'Pendente' : request.status === 'on_route' ? 'Em Rota' : 'Concluído'}
+                                </span>
+                              </td>
+                              <td className="p-3 capitalize font-medium text-slate-700">{request.type}</td>
+                              <td className="p-3 text-slate-600 truncate max-w-[200px]" title={request.address}>{request.address}</td>
+                              <td className="p-3 text-slate-600 truncate max-w-[150px]">{request.requesterName}</td>
+                              <td className="p-3 text-slate-600">{request.orderNumber || request.osNumber || '-'}</td>
+                              <td className="p-3 text-center">
+                                <button 
+                                  onClick={(e) => { e.stopPropagation(); handleDelete(request.id); }}
+                                  className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                                >
+                                  <Trash2 size={16} />
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
           )}
         </div>
       </div>
+
+      {isModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto animate-in zoom-in-95 duration-200">
+            <div className="sticky top-0 bg-white border-b border-slate-100 p-6 flex justify-between items-center z-10">
+              <h2 className="text-xl font-bold text-slate-800">Nova Demanda Manual</h2>
+              <button 
+                onClick={() => setIsModalOpen(false)}
+                className="p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600 rounded-xl transition-colors"
+              >
+                <X size={20} />
+              </button>
+            </div>
+            
+            <form onSubmit={handleManualSubmit} className="p-6 space-y-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 mb-2">Tipo de Tarefa</label>
+                  <select 
+                    value={manualForm.type}
+                    onChange={(e) => setManualForm({...manualForm, type: e.target.value as any})}
+                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:border-brand-cyan focus:ring-1 focus:ring-brand-cyan outline-none text-slate-700 font-medium"
+                  >
+                    <option value="entrega">Entrega</option>
+                    <option value="coleta">Coleta</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 mb-2">Data Agendada (Opcional)</label>
+                  <input 
+                    type="date"
+                    value={manualForm.scheduledDate}
+                    onChange={(e) => setManualForm({...manualForm, scheduledDate: e.target.value})}
+                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:border-brand-cyan focus:ring-1 focus:ring-brand-cyan outline-none text-slate-700 font-medium"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-2">Endereço Completo</label>
+                <input 
+                  type="text"
+                  required
+                  value={manualForm.address}
+                  onChange={(e) => setManualForm({...manualForm, address: e.target.value})}
+                  placeholder="Ex: Rua das Flores, 123, São Paulo - SP"
+                  className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:border-brand-cyan focus:ring-1 focus:ring-brand-cyan outline-none"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 mb-2">Nome do Cliente/Fornecedor</label>
+                  <input 
+                    type="text"
+                    required
+                    value={manualForm.requesterName}
+                    onChange={(e) => setManualForm({...manualForm, requesterName: e.target.value})}
+                    placeholder="Nome completo ou empresa"
+                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:border-brand-cyan focus:ring-1 focus:ring-brand-cyan outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 mb-2">Telefone</label>
+                  <input 
+                    type="tel"
+                    required
+                    value={manualForm.contactPhone}
+                    onChange={(e) => setManualForm({...manualForm, contactPhone: e.target.value})}
+                    placeholder="(00) 00000-0000"
+                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:border-brand-cyan focus:ring-1 focus:ring-brand-cyan outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {manualForm.type === 'coleta' ? (
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-700 mb-2">Nº da OS</label>
+                    <input 
+                      type="text"
+                      value={manualForm.osNumber}
+                      onChange={(e) => setManualForm({...manualForm, osNumber: e.target.value})}
+                      placeholder="Ex: OS-1029"
+                      className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:border-brand-cyan focus:ring-1 focus:ring-brand-cyan outline-none"
+                    />
+                  </div>
+                ) : (
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-700 mb-2">Nº do Pedido</label>
+                    <input 
+                      type="text"
+                      value={manualForm.orderNumber}
+                      onChange={(e) => setManualForm({...manualForm, orderNumber: e.target.value})}
+                      placeholder="Ex: PED-5521"
+                      className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:border-brand-cyan focus:ring-1 focus:ring-brand-cyan outline-none"
+                    />
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-2">Observações Adicionais</label>
+                <textarea 
+                  value={manualForm.observations}
+                  onChange={(e) => setManualForm({...manualForm, observations: e.target.value})}
+                  rows={3}
+                  placeholder="Instruções de entrega, horário limite, etc."
+                  className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:border-brand-cyan focus:ring-1 focus:ring-brand-cyan outline-none resize-none"
+                ></textarea>
+              </div>
+
+              <div className="pt-4 border-t border-slate-100 flex justify-end gap-3">
+                <button 
+                  type="button"
+                  onClick={() => setIsModalOpen(false)}
+                  className="px-6 py-2.5 text-slate-600 font-medium hover:bg-slate-50 rounded-xl transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button 
+                  type="submit"
+                  className="px-6 py-2.5 bg-brand-cyan text-white font-medium rounded-xl hover:bg-brand-blue transition-colors shadow-sm"
+                >
+                  Salvar Demanda
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
