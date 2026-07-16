@@ -1294,7 +1294,8 @@ export default function RoutesPage() {
                       orderNumber: req.orderNumber || req.osNumber || '',
                       customerName: req.requesterName || '',
                       customerPhone: req.contactPhone || '',
-                      observation: req.observations || ''
+                      observation: req.observations || '',
+                      externalRequestId: req.id
                     });
                   });
                   

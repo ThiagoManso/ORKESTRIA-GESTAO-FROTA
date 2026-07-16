@@ -9,37 +9,34 @@ export interface ExternalRequest {
   requesterName: string;
   contactPhone: string;
   observations?: string;
-  status: 'pending' | 'converted';
+  scheduledDate: string;
+  status: 'pending' | 'on_route' | 'completed';
+  read: boolean;
   createdAt: string;
 }
 
 export interface RouteItem {
   id: string;
-  routeNumber?: number;
-  status: 'pending' | 'in_progress' | 'completed' | 'issue';
   driver: string;
+  status: 'pending' | 'in_progress' | 'completed' | 'issue';
+  stops: number;
+  distance: number;
+  date: string;
+  departureTime?: string;
+  estimatedTime?: string;
   origin?: string;
   destination?: string;
   intermediates?: string[];
-  optimizeOrder?: boolean;
-  departureTime?: string;
-  lat?: number;
-  lng?: number;
-  stops: number;
-  distance: number;
-  estimatedTime: string;
-  date: string;
-  stopDetails?: { 
-    id: string; 
-    address: string; 
+  routeNumber?: number;
+  stopDetails?: {
+    id: string;
+    address: string;
     status: 'pending' | 'completed' | 'issue';
-    issueDescription?: string;
-    issuePhotoUrl?: string;
-    timestamp?: string;
     orderNumber?: string;
     customerName?: string;
     customerPhone?: string;
     observation?: string;
+    externalRequestId?: string;
   }[];
   returnToMatriz?: boolean;
 }

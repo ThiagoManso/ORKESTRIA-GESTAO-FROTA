@@ -16,6 +16,7 @@ interface DriverViewPageProps {
 
 export default function DriverViewPage({ driverId, driverName, driverStatus }: DriverViewPageProps) {
   const { data: routes, update } = useCollection<RouteItem>('routes');
+  const { update: updateExternalRequest } = useCollection<any>('external_requests');
   const { data: vehicles, update: updateVehicle } = useCollection<Vehicle>('vehicles');
   const { data: dailyLogs, add: addDailyLog, update: updateDailyLog } = useCollection<DailyLog>('dailyLogs');
 

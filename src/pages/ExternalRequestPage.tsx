@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Package, MapPin, FileText, Send, CheckCircle, ArrowLeft } from 'lucide-react';
+import { Package, MapPin, FileText, Send, CheckCircle, ArrowLeft, Calendar } from 'lucide-react';
 import { collection, addDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 
@@ -14,6 +14,7 @@ export default function ExternalRequestPage() {
     orderNumber: '', // For entrega
     requesterName: '',
     contactPhone: '',
+    scheduledDate: '',
   });
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -23,6 +24,7 @@ export default function ExternalRequestPage() {
       await addDoc(collection(db, 'external_requests'), {
         ...requestData,
         status: 'pending',
+        read: false,
         createdAt: new Date().toISOString()
       });
       setIsSubmitted(true);
@@ -56,6 +58,7 @@ export default function ExternalRequestPage() {
                 orderNumber: '',
                 requesterName: '',
                 contactPhone: '',
+                scheduledDate: '',
               });
             }}
             className="w-full py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-xl transition-colors"
@@ -166,6 +169,23 @@ export default function ExternalRequestPage() {
                     onChange={(e) => setRequestData({...requestData, address: e.target.value})}
                     className="w-full pl-10 pr-4 py-3 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:border-primary focus:ring-1 focus:ring-primary shadow-sm transition-all"
                     placeholder="Rua, Número, Bairro, Cidade - Estado"
+                  />
+                </div>
+              </div>
+
+              {/* Scheduled Date */}
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-1.5">
+                  Data Agendada <span className="text-red-500">*</span>
+                </label>
+                <div className="relative">
+                  <Calendar className="absolute left-3 top-3.5 text-slate-400" size={18} />
+                  <input 
+                    type="date" 
+                    required
+                    value={requestData.scheduledDate}
+                    onChange={(e) => setRequestData({...requestData, scheduledDate: e.target.value})}
+                    className="w-full pl-10 pr-4 py-3 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:border-primary focus:ring-1 focus:ring-primary shadow-sm transition-all"
                   />
                 </div>
               </div>

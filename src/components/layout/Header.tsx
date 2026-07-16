@@ -1,12 +1,19 @@
 import React, { useState } from 'react';
 import { Bell, Search, User, Menu, Share2, Check } from 'lucide-react';
 
+import { useCollection } from '../../lib/useCollection';
+import { ExternalRequest } from '../../types';
+
 interface HeaderProps {
   onMenuClick: () => void;
+  onNotificationClick?: () => void;
 }
 
-export default function Header({ onMenuClick }: HeaderProps) {
+export default function Header({ onMenuClick, onNotificationClick }: HeaderProps) {
   const [copied, setCopied] = useState(false);
+  const { data: externalRequests } = useCollection<ExternalRequest>('external_requests');
+  
+  const unreadCount = externalRequests?.filter(r => !r.read).length || 0;
 
   const handleShare = () => {
     const shareUrl = `${window.location.origin}${window.location.pathname}?view=external-request`;
@@ -56,9 +63,16 @@ export default function Header({ onMenuClick }: HeaderProps) {
           <Search size={20} />
         </button>
         
-        <button className="relative p-2 text-slate-500 hover:bg-slate-100 rounded-full transition-colors">
+        <button 
+          onClick={onNotificationClick}
+          className="relative p-2 text-slate-500 hover:bg-slate-100 rounded-full transition-colors"
+        >
           <Bell size={20} />
-          <span className="absolute top-1.5 right-2 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white"></span>
+          {unreadCount > 0 && (
+            <span className="absolute top-1 right-1 w-4 h-4 bg-red-500 rounded-full border-2 border-white flex items-center justify-center text-[8px] text-white font-bold">
+              {unreadCount}
+            </span>
+          )}
         </button>
         
         <div className="flex items-center gap-3 pl-4 sm:pl-6 border-l border-slate-200">

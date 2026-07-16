@@ -1,12 +1,21 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useCollection } from '../lib/useCollection';
 import { ExternalRequest } from '../types';
-import { Package, MapPin, CheckCircle, Clock, Search, Trash2 } from 'lucide-react';
+import { Package, MapPin, CheckCircle, Clock, Search, Trash2, Calendar } from 'lucide-react';
 
 export default function RequestsPage() {
   const { data: requests, update, remove, loading } = useCollection<ExternalRequest>('external_requests');
   const [searchTerm, setSearchTerm] = useState('');
-  const [filterStatus, setFilterStatus] = useState<'all' | 'pending' | 'converted'>('all');
+  const [filterStatus, setFilterStatus] = useState<'all' | 'pending' | 'on_route' | 'completed'>('all');
+
+  useEffect(() => {
+    if (requests) {
+      const unread = requests.filter(r => !r.read);
+      unread.forEach(req => {
+        update(req.id, { read: true }).catch(console.error);
+      });
+    }
+  }, [requests]);
 
   if (loading) {
     return (
@@ -26,10 +35,14 @@ export default function RequestsPage() {
     const matchesStatus = filterStatus === 'all' || req.status === filterStatus;
 
     return matchesSearch && matchesStatus;
-  }).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  }).sort((a, b) => {
+      const dateA = a.scheduledDate ? new Date(a.scheduledDate).getTime() : new Date(a.createdAt).getTime();
+      const dateB = b.scheduledDate ? new Date(b.scheduledDate).getTime() : new Date(b.createdAt).getTime();
+      return dateA - dateB; // Crescente
+  });
 
   const handleMarkConverted = async (id: string) => {
-    await update(id, { status: 'converted' });
+    await update(id, { status: 'on_route' });
   };
 
   const handleDelete = async (id: string) => {
@@ -67,7 +80,8 @@ export default function RequestsPage() {
             >
               <option value="all">Todos os Status</option>
               <option value="pending">Pendentes</option>
-              <option value="converted">Convertidos em Rota</option>
+              <option value="on_route">Em Rota</option>
+              <option value="completed">Concluídos</option>
             </select>
           </div>
         </div>
@@ -90,17 +104,21 @@ export default function RequestsPage() {
                       <div>
                         <span className="font-bold text-slate-800 capitalize">{request.type}</span>
                         <div className="text-xs text-slate-500 flex items-center gap-1 mt-0.5">
-                          <Clock size={12} />
+                          <Calendar size={12} className="text-brand-cyan" />
+                          <strong className="text-brand-cyan">{request.scheduledDate ? new Date(request.scheduledDate + 'T12:00:00').toLocaleDateString('pt-BR') : 'Sem data'}</strong>
+                        </div>
+                        <div className="text-[10px] text-slate-400 flex items-center gap-1 mt-0.5">
+                          <Clock size={10} />
                           {new Date(request.createdAt).toLocaleString('pt-BR')}
                         </div>
                       </div>
                     </div>
                     <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${
-                      request.status === 'pending' 
-                        ? 'bg-amber-100 text-amber-700' 
-                        : 'bg-emerald-100 text-emerald-700'
+                      request.status === 'pending' ? 'bg-amber-100 text-amber-700' : 
+                      request.status === 'on_route' ? 'bg-blue-100 text-blue-700' :
+                      'bg-emerald-100 text-emerald-700'
                     }`}>
-                      {request.status === 'pending' ? 'Pendente' : 'Na Rota'}
+                      {request.status === 'pending' ? 'Pendente' : request.status === 'on_route' ? 'Em Rota' : 'Concluído'}
                     </span>
                   </div>
 
