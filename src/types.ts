@@ -23,6 +23,10 @@ export interface RouteItem {
     issueDescription?: string;
     issuePhotoUrl?: string;
     timestamp?: string;
+    orderNumber?: string;
+    customerName?: string;
+    customerPhone?: string;
+    observation?: string;
   }[];
   returnToMatriz?: boolean;
 }

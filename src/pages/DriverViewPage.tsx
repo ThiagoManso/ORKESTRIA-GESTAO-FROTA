@@ -564,6 +564,31 @@ export default function DriverViewPage({ driverId, driverName, driverStatus }: D
                       {stop.address}
                     </h3>
                     
+                    {(stop.orderNumber || stop.customerName || stop.customerPhone || stop.observation) && (
+                      <div className={`mt-3 p-3 rounded-xl text-sm ${isCompleted ? 'bg-emerald-100/50' : isIssue ? 'bg-red-100/50' : 'bg-slate-50 border border-slate-100'}`}>
+                        <div className="font-semibold text-slate-800 mb-2 border-b border-slate-200/50 pb-2">Resumo do Pedido</div>
+                        <div className="space-y-1.5 text-slate-600">
+                          {stop.orderNumber && <div className="flex justify-between"><span className="text-slate-400">Nº Pedido / OS:</span> <span className="font-medium text-slate-700">{stop.orderNumber}</span></div>}
+                          {stop.customerName && <div className="flex justify-between"><span className="text-slate-400">Nome:</span> <span className="font-medium text-slate-700">{stop.customerName}</span></div>}
+                          {stop.customerPhone && (
+                            <div className="flex justify-between items-center">
+                              <span className="text-slate-400">Telefone:</span> 
+                              <a href={`tel:${stop.customerPhone.replace(/\\D/g, '')}`} className="font-medium text-brand-cyan hover:underline flex items-center gap-1">
+                                {stop.customerPhone}
+                              </a>
+                            </div>
+                          )}
+                          {stop.observation && (
+                            <div className="mt-2 pt-2 border-t border-slate-200/50">
+                              <span className="text-slate-400 block text-xs mb-1">Observação:</span>
+                              <span className="text-slate-700 italic">{stop.observation}</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    
                     {!isCompleted && !isIssue && (
                       <div className="mt-4 flex flex-col gap-2">
                         <a 

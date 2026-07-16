@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Filter, MapPin, Truck, CheckCircle, Clock, X, Map, RefreshCw, Trash2 } from 'lucide-react';
+import { Search, Filter, MapPin, Truck, CheckCircle, Clock, X, Map, RefreshCw, Trash2, Upload, Download } from 'lucide-react';
 import { RouteItem } from '../types';
 import { useMapsLibrary } from '@vis.gl/react-google-maps';
 import { useCollection } from '../lib/useCollection';
@@ -55,6 +55,7 @@ export default function RoutesPage() {
     origin: '',
     destination: '',
     intermediates: [] as string[],
+    intermediateMetadata: [] as any[],
     optimizeOrder: true,
     departureTime: '',
     stops: 1,
@@ -108,13 +109,21 @@ export default function RoutesPage() {
         const formattedTime = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')} h`;
         
         let newIntermediates = routeData.intermediates || [];
+        let newMetadata = routeData.intermediateMetadata || [];
+        
         if (route.waypoint_order && route.waypoint_order.length > 0) {
-          const original = newIntermediates.filter((addr: string) => addr.trim() !== '');
-          newIntermediates = route.waypoint_order.map((idx: number) => original[idx]);
+          const validIndices = (routeData.intermediates || []).map((addr: string, idx: number) => addr.trim() !== '' ? idx : -1).filter((i: number) => i !== -1);
+          
+          const originalAddresses = validIndices.map((idx: number) => (routeData.intermediates || [])[idx]);
+          const originalMetadata = validIndices.map((idx: number) => (routeData.intermediateMetadata || [])[idx] || {});
+          
+          newIntermediates = route.waypoint_order.map((idx: number) => originalAddresses[idx]);
+          newMetadata = route.waypoint_order.map((idx: number) => originalMetadata[idx]);
         }
 
         return {
           intermediates: newIntermediates,
+          intermediateMetadata: newMetadata,
           distance: Number(distanceKm.toFixed(1)),
           estimatedTime: formattedTime
         };
@@ -124,6 +133,79 @@ export default function RoutesPage() {
       return { error: error?.message || error?.code || 'Erro desconhecido ao calcular a rota com a API do Google Maps.' };
     }
     return { error: 'Nenhuma rota encontrada.' };
+  };
+
+  
+  const downloadCSVTemplate = () => {
+    const csvContent = "Endereço;N° Pedido / OS;Nome;Telefone;Observação\nEx: Rua das Flores 123 - SP;1001;João Silva;11999999999;Entregar na portaria";
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', 'modelo_rota.csv');
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>, isEditing: boolean = false) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const text = event.target?.result as string;
+      if (!text) return;
+
+      const lines = text.split('\n');
+      if (lines.length <= 1) return;
+
+      // Detect separator (comma or semicolon)
+      const headerLine = lines[0];
+      const separator = headerLine.includes(';') ? ';' : ',';
+      
+      const newStops: string[] = [];
+      const newMeta: any[] = [];
+
+      for (let i = 1; i < lines.length; i++) {
+        const line = lines[i].trim();
+        if (!line) continue;
+        
+        // Simple CSV parse (does not handle quoted fields with separators well, but enough for simple inputs)
+        const cols = line.split(separator).map(c => c.trim().replace(/^"|"$/g, ''));
+        const address = cols[0];
+        
+        if (address) {
+          newStops.push(address);
+          newMeta.push({
+            orderNumber: cols[1] || '',
+            customerName: cols[2] || '',
+            customerPhone: cols[3] || '',
+            observation: cols[4] || ''
+          });
+        }
+      }
+
+      if (newStops.length > 0) {
+        if (isEditing) {
+          setEditingRoute((prev: any) => ({
+            ...prev,
+            intermediates: newStops,
+            intermediateMetadata: newMeta,
+            stops: Math.max(1, newStops.length)
+          }));
+        } else {
+          setNewRoute(prev => ({
+            ...prev,
+            intermediates: newStops,
+            intermediateMetadata: newMeta,
+            stops: Math.max(1, newStops.length)
+          }));
+        }
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = ''; // reset input
   };
 
   const calculateRoute = async () => {
@@ -147,6 +229,7 @@ export default function RoutesPage() {
     let finalDistance = newRoute.distance;
     let finalEstimatedTime = newRoute.estimatedTime || '00:00 h';
     let finalIntermediates = newRoute.intermediates;
+    let finalMetadata = newRoute.intermediateMetadata || [];
     
     // Always compute to ensure distance/time/order are correct before saving
     if (newRoute.distance > 0) {
@@ -154,12 +237,15 @@ export default function RoutesPage() {
       finalDistance = newRoute.distance;
       finalEstimatedTime = newRoute.estimatedTime || '00:00 h';
       finalIntermediates = newRoute.intermediates;
+      finalMetadata = newRoute.intermediateMetadata || [];
     } else if (routesLib && newRoute.origin && newRoute.destination) {
       const data = await calculateRouteData(newRoute);
       if (data && !data.error) {
         finalDistance = data.distance;
         finalEstimatedTime = data.estimatedTime;
         finalIntermediates = data.intermediates;
+        finalMetadata = data.intermediateMetadata || [];
+        finalMetadata = data.intermediateMetadata || [];
       } else {
         alert('Não foi possível calcular a rota com os endereços fornecidos. Erro: ' + (data?.error || ''));
         setIsCalculating(false);
@@ -174,13 +260,16 @@ export default function RoutesPage() {
       formattedDate = d.toLocaleDateString('pt-BR');
     }
 
-    const stopDetails = finalIntermediates
-      .filter(addr => addr.trim() !== '')
-      .map((addr, index) => ({
-        id: `stop-${index}`,
-        address: addr,
-        status: 'pending' as const
-      }));
+    const validIntermediates = finalIntermediates.map((addr, i) => ({ addr, meta: finalMetadata[i] || {} })).filter(item => item.addr.trim() !== '');
+    const stopDetails = validIntermediates.map((item, index) => ({
+      id: `stop-${index}`,
+      address: item.addr,
+      status: 'pending' as const,
+      orderNumber: item.meta.orderNumber,
+      customerName: item.meta.customerName,
+      customerPhone: item.meta.customerPhone,
+      observation: item.meta.observation,
+    }));
 
     if (newRoute.destination && newRoute.destination.trim() !== '' && !newRoute.returnToMatriz) {
        stopDetails.push({
@@ -218,6 +307,7 @@ export default function RoutesPage() {
       origin: '',
       destination: '',
       intermediates: [],
+      intermediateMetadata: [],
       optimizeOrder: true,
       departureTime: '',
       stops: 1,
@@ -235,6 +325,7 @@ export default function RoutesPage() {
     let finalDistance = editingRoute.distance;
     let finalEstimatedTime = editingRoute.estimatedTime || '00:00 h';
     let finalIntermediates = editingRoute.intermediates;
+    let finalMetadata = (editingRoute as any).intermediateMetadata || [];
     
     if (routesLib && editingRoute.origin && editingRoute.destination) {
       const data = await calculateRouteData(editingRoute);
@@ -252,13 +343,16 @@ export default function RoutesPage() {
       updatedRoute.date = d.toLocaleDateString('pt-BR');
     }
     
-    const stopDetails = finalIntermediates
-      ?.filter(addr => addr.trim() !== '')
-      .map((addr, index) => ({
-        id: `stop-${index}`,
-        address: addr,
-        status: 'pending' as const
-      })) || [];
+    const validEditIntermediates = finalIntermediates?.map((addr, i) => ({ addr, meta: finalMetadata[i] || {} })).filter(item => item.addr.trim() !== '') || [];
+    const stopDetails = validEditIntermediates.map((item, index) => ({
+      id: `stop-${index}`,
+      address: item.addr,
+      status: 'pending' as const,
+      orderNumber: item.meta.orderNumber,
+      customerName: item.meta.customerName,
+      customerPhone: item.meta.customerPhone,
+      observation: item.meta.observation,
+    }));
 
     if (updatedRoute.destination && updatedRoute.destination.trim() !== '' && !updatedRoute.returnToMatriz) {
        stopDetails.push({
@@ -436,6 +530,20 @@ export default function RoutesPage() {
                   />
                 </div>
 
+                
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50 p-3 rounded-xl border border-slate-100">
+                  <div className="text-sm font-semibold text-slate-800">Paradas da Rota</div>
+                  <div className="flex gap-2">
+                    <button type="button" onClick={downloadCSVTemplate} className="text-xs font-semibold px-3 py-1.5 bg-white border border-slate-200 text-slate-700 rounded-lg shadow-sm hover:bg-slate-50 flex items-center gap-1.5">
+                      <Download size={14} /> Modelo CSV
+                    </button>
+                    <label className="text-xs font-semibold px-3 py-1.5 bg-brand-cyan text-white rounded-lg shadow-sm hover:bg-brand-blue cursor-pointer flex items-center gap-1.5 transition-colors">
+                      <Upload size={14} /> Importar CSV
+                      <input type="file" accept=".csv" className="hidden" onChange={(e) => handleFileUpload(e, false)} />
+                    </label>
+                  </div>
+                </div>
+                
                 {newRoute.intermediates?.map((waypoint, index) => (
                   <div key={index} className="flex items-center gap-2">
                     <div className="flex-1">
@@ -453,6 +561,32 @@ export default function RoutesPage() {
                         className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:border-primary focus:ring-1 focus:ring-primary shadow-sm"
                         placeholder="Endereço da parada intermediária"
                       />
+                        <div className="mt-2 grid grid-cols-2 sm:grid-cols-4 gap-2">
+                          <input type="text" placeholder="Nº Pedido" value={newRoute.intermediateMetadata?.[index]?.orderNumber || ''} onChange={(e) => {
+                            const newMeta = [...(newRoute.intermediateMetadata || [])];
+                            if(!newMeta[index]) newMeta[index] = {};
+                            newMeta[index].orderNumber = e.target.value;
+                            setNewRoute({...newRoute, intermediateMetadata: newMeta});
+                          }} className="w-full px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-md text-xs outline-none focus:border-primary" />
+                          <input type="text" placeholder="Nome" value={newRoute.intermediateMetadata?.[index]?.customerName || ''} onChange={(e) => {
+                            const newMeta = [...(newRoute.intermediateMetadata || [])];
+                            if(!newMeta[index]) newMeta[index] = {};
+                            newMeta[index].customerName = e.target.value;
+                            setNewRoute({...newRoute, intermediateMetadata: newMeta});
+                          }} className="w-full px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-md text-xs outline-none focus:border-primary" />
+                          <input type="text" placeholder="Telefone" value={newRoute.intermediateMetadata?.[index]?.customerPhone || ''} onChange={(e) => {
+                            const newMeta = [...(newRoute.intermediateMetadata || [])];
+                            if(!newMeta[index]) newMeta[index] = {};
+                            newMeta[index].customerPhone = e.target.value;
+                            setNewRoute({...newRoute, intermediateMetadata: newMeta});
+                          }} className="w-full px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-md text-xs outline-none focus:border-primary" />
+                          <input type="text" placeholder="Observação" value={newRoute.intermediateMetadata?.[index]?.observation || ''} onChange={(e) => {
+                            const newMeta = [...(newRoute.intermediateMetadata || [])];
+                            if(!newMeta[index]) newMeta[index] = {};
+                            newMeta[index].observation = e.target.value;
+                            setNewRoute({...newRoute, intermediateMetadata: newMeta});
+                          }} className="w-full px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-md text-xs outline-none focus:border-primary" />
+                        </div>
                     </div>
                     <button
                       type="button"
