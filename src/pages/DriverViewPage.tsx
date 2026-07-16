@@ -246,6 +246,10 @@ export default function DriverViewPage({ driverId, driverName, driverStatus }: D
       stopDetails: newStopDetails,
       ...(allCompleted ? { status: 'completed' } : {})
     });
+    
+    if (newStopDetails[stopIndex].externalRequestId) {
+      await updateExternalRequest(newStopDetails[stopIndex].externalRequestId, { status: 'completed' }).catch(console.error);
+    }
   };
 
   const handleIssueStop = (route: RouteItem, stopIndex: number) => {

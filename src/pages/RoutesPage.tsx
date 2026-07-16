@@ -273,6 +273,7 @@ export default function RoutesPage() {
       customerName: item.meta.customerName || '',
       customerPhone: item.meta.customerPhone || '',
       observation: item.meta.observation || '',
+      externalRequestId: item.meta.externalRequestId || '',
     }));
 
     if (newRoute.destination && newRoute.destination.trim() !== '' && !newRoute.returnToMatriz) {
@@ -305,6 +306,13 @@ export default function RoutesPage() {
       returnToMatriz: newRoute.returnToMatriz,
     });
     
+    if (selectedRequestIds.length > 0) {
+      for (const reqId of selectedRequestIds) {
+        await updateRequest(reqId, { status: 'on_route' });
+      }
+      setSelectedRequestIds([]);
+    }
+
     setIsModalOpen(false);
     setNewRoute({
       driver: '',
@@ -556,64 +564,73 @@ export default function RoutesPage() {
                   </div>
                 </div>
                 
+                <div className="max-h-72 overflow-y-auto pr-2 space-y-3">
                 {newRoute.intermediates?.map((waypoint, index) => (
-                  <div key={index} className="flex items-center gap-2">
-                    <div className="flex-1">
-                      <label className="block text-sm font-semibold text-slate-700 mb-1.5">
-                        Parada {index + 1}
-                      </label>
-                      <input 
-                        type="text" 
-                        value={waypoint}
-                        onChange={(e) => {
-                          const newIntermediates = [...(newRoute.intermediates || [])];
-                          newIntermediates[index] = e.target.value;
-                          setNewRoute({...newRoute, intermediates: newIntermediates});
-                        }}
-                        className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:border-primary focus:ring-1 focus:ring-primary shadow-sm"
-                        placeholder="Endereço da parada intermediária"
-                      />
-                        <div className="mt-2 grid grid-cols-2 sm:grid-cols-4 gap-2">
-                          <input type="text" placeholder="Nº Pedido" value={newRoute.intermediateMetadata?.[index]?.orderNumber || ''} onChange={(e) => {
-                            const newMeta = [...(newRoute.intermediateMetadata || [])];
-                            if(!newMeta[index]) newMeta[index] = {};
-                            newMeta[index].orderNumber = e.target.value;
-                            setNewRoute({...newRoute, intermediateMetadata: newMeta});
-                          }} className="w-full px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-md text-xs outline-none focus:border-primary" />
-                          <input type="text" placeholder="Nome" value={newRoute.intermediateMetadata?.[index]?.customerName || ''} onChange={(e) => {
-                            const newMeta = [...(newRoute.intermediateMetadata || [])];
-                            if(!newMeta[index]) newMeta[index] = {};
-                            newMeta[index].customerName = e.target.value;
-                            setNewRoute({...newRoute, intermediateMetadata: newMeta});
-                          }} className="w-full px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-md text-xs outline-none focus:border-primary" />
-                          <input type="text" placeholder="Telefone" value={newRoute.intermediateMetadata?.[index]?.customerPhone || ''} onChange={(e) => {
-                            const newMeta = [...(newRoute.intermediateMetadata || [])];
-                            if(!newMeta[index]) newMeta[index] = {};
-                            newMeta[index].customerPhone = e.target.value;
-                            setNewRoute({...newRoute, intermediateMetadata: newMeta});
-                          }} className="w-full px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-md text-xs outline-none focus:border-primary" />
-                          <input type="text" placeholder="Observação" value={newRoute.intermediateMetadata?.[index]?.observation || ''} onChange={(e) => {
-                            const newMeta = [...(newRoute.intermediateMetadata || [])];
-                            if(!newMeta[index]) newMeta[index] = {};
-                            newMeta[index].observation = e.target.value;
-                            setNewRoute({...newRoute, intermediateMetadata: newMeta});
-                          }} className="w-full px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-md text-xs outline-none focus:border-primary" />
+                  <div key={index} className="flex items-start gap-2 bg-white p-3 rounded-xl border border-slate-200 shadow-sm relative group">
+                    <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-3 items-center">
+                      <div className="lg:col-span-5">
+                        <label className="block text-xs font-semibold text-slate-500 mb-1 lg:hidden">
+                          Parada {index + 1} - Endereço
+                        </label>
+                        <div className="flex items-center gap-2">
+                          <span className="hidden lg:flex w-6 h-6 bg-slate-100 text-slate-500 rounded-full text-xs items-center justify-center font-bold flex-shrink-0">
+                            {index + 1}
+                          </span>
+                          <input 
+                            type="text" 
+                            value={waypoint}
+                            onChange={(e) => {
+                              const newIntermediates = [...(newRoute.intermediates || [])];
+                              newIntermediates[index] = e.target.value;
+                              setNewRoute({...newRoute, intermediates: newIntermediates});
+                            }}
+                            className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:border-primary focus:bg-white transition-colors"
+                            placeholder="Endereço da parada"
+                          />
                         </div>
+                      </div>
+                      
+                      <div className="lg:col-span-7 grid grid-cols-2 sm:grid-cols-4 gap-2">
+                        <input type="text" placeholder="Nº Ped/OS" value={newRoute.intermediateMetadata?.[index]?.orderNumber || ''} onChange={(e) => {
+                          const newMeta = [...(newRoute.intermediateMetadata || [])];
+                          if(!newMeta[index]) newMeta[index] = {};
+                          newMeta[index].orderNumber = e.target.value;
+                          setNewRoute({...newRoute, intermediateMetadata: newMeta});
+                        }} className="w-full px-2 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:border-primary focus:bg-white" />
+                        <input type="text" placeholder="Nome" value={newRoute.intermediateMetadata?.[index]?.customerName || ''} onChange={(e) => {
+                          const newMeta = [...(newRoute.intermediateMetadata || [])];
+                          if(!newMeta[index]) newMeta[index] = {};
+                          newMeta[index].customerName = e.target.value;
+                          setNewRoute({...newRoute, intermediateMetadata: newMeta});
+                        }} className="w-full px-2 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:border-primary focus:bg-white" />
+                        <input type="text" placeholder="Telefone" value={newRoute.intermediateMetadata?.[index]?.customerPhone || ''} onChange={(e) => {
+                          const newMeta = [...(newRoute.intermediateMetadata || [])];
+                          if(!newMeta[index]) newMeta[index] = {};
+                          newMeta[index].customerPhone = e.target.value;
+                          setNewRoute({...newRoute, intermediateMetadata: newMeta});
+                        }} className="w-full px-2 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:border-primary focus:bg-white" />
+                        <input type="text" placeholder="Observação" value={newRoute.intermediateMetadata?.[index]?.observation || ''} onChange={(e) => {
+                          const newMeta = [...(newRoute.intermediateMetadata || [])];
+                          if(!newMeta[index]) newMeta[index] = {};
+                          newMeta[index].observation = e.target.value;
+                          setNewRoute({...newRoute, intermediateMetadata: newMeta});
+                        }} className="w-full px-2 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:border-primary focus:bg-white" />
+                      </div>
                     </div>
                     <button
                       type="button"
                       onClick={() => {
                         const newIntermediates = [...(newRoute.intermediates || [])];
                         newIntermediates.splice(index, 1);
-                        // Also adjust stops count
                         setNewRoute({...newRoute, intermediates: newIntermediates, stops: Math.max(1, newRoute.stops - 1)});
                       }}
-                      className="mt-6 p-2.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition-colors"
+                      className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors flex-shrink-0 lg:mt-0 mt-6"
                     >
-                      <X size={20} />
+                      <X size={18} />
                     </button>
                   </div>
                 ))}
+                </div>
 
                 <div>
                   <button
@@ -625,7 +642,7 @@ export default function RoutesPage() {
                         stops: newRoute.stops + 1
                       });
                     }}
-                    className="text-sm font-semibold text-primary hover:text-primary-hover flex items-center gap-1.5"
+                    className="text-sm font-semibold text-emerald-600 hover:text-emerald-700 bg-emerald-50 hover:bg-emerald-100 px-4 py-2 rounded-lg flex items-center gap-1.5 transition-colors"
                   >
                     + Adicionar Parada Intermediária
                   </button>
