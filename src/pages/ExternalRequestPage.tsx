@@ -1,8 +1,11 @@
 import React, { useState } from 'react';
 import { Package, MapPin, FileText, Send, CheckCircle, ArrowLeft } from 'lucide-react';
+import { collection, addDoc } from 'firebase/firestore';
+import { db } from '../lib/firebase';
 
 export default function ExternalRequestPage() {
   const [isSubmitted, setIsSubmitted] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [requestData, setRequestData] = useState({
     type: 'coleta' as 'coleta' | 'entrega',
     address: '',
@@ -13,10 +16,22 @@ export default function ExternalRequestPage() {
     contactPhone: '',
   });
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // Simulate API call to save request
-    setIsSubmitted(true);
+    setIsSubmitting(true);
+    try {
+      await addDoc(collection(db, 'external_requests'), {
+        ...requestData,
+        status: 'pending',
+        createdAt: new Date().toISOString()
+      });
+      setIsSubmitted(true);
+    } catch (error) {
+      console.error("Error saving request: ", error);
+      alert("Houve um erro ao enviar sua solicitação. Tente novamente.");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   if (isSubmitted) {
@@ -201,10 +216,15 @@ export default function ExternalRequestPage() {
             <div className="mt-8">
               <button 
                 type="submit"
-                className="w-full flex items-center justify-center gap-2 px-4 py-4 bg-gradient-to-r from-[var(--color-brand-cyan)] to-[var(--color-brand-blue)] text-white rounded-xl font-bold text-lg hover:opacity-90 transition-opacity shadow-md hover:shadow-lg"
+                disabled={isSubmitting}
+                className="w-full flex items-center justify-center gap-2 px-4 py-4 bg-gradient-to-r from-[var(--color-brand-cyan)] to-[var(--color-brand-blue)] text-white rounded-xl font-bold text-lg hover:opacity-90 transition-opacity shadow-md hover:shadow-lg disabled:opacity-70"
               >
-                <Send size={20} />
-                Enviar Solicitação
+                {isSubmitting ? (
+                  <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                ) : (
+                  <Send size={20} />
+                )}
+                {isSubmitting ? 'Enviando...' : 'Enviar Solicitação'}
               </button>
             </div>
           </form>

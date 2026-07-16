@@ -1,4 +1,17 @@
-export type ViewState = 'dashboard' | 'routes' | 'drivers' | 'financial' | 'issues' | 'map' | 'vehicles' | 'settings';
+export type ViewState = 'dashboard' | 'routes' | 'drivers' | 'financial' | 'issues' | 'map' | 'vehicles' | 'settings' | 'requests';
+
+export interface ExternalRequest {
+  id: string;
+  type: 'coleta' | 'entrega';
+  address: string;
+  osNumber?: string;
+  orderNumber?: string;
+  requesterName: string;
+  contactPhone: string;
+  observations?: string;
+  status: 'pending' | 'converted';
+  createdAt: string;
+}
 
 export interface RouteItem {
   id: string;

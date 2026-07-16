@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Filter, MapPin, Truck, CheckCircle, Clock, X, Map, RefreshCw, Trash2, Upload, Download } from 'lucide-react';
+import { Search, Filter, MapPin, Truck, CheckCircle, Clock, X, Map, RefreshCw, Trash2, Upload, Download, Package } from 'lucide-react';
 import { RouteItem } from '../types';
 import { useMapsLibrary } from '@vis.gl/react-google-maps';
 import { useCollection } from '../lib/useCollection';
+import { ExternalRequest } from '../types';
 
 const StatusBadge = ({ status }: { status: RouteItem['status'] }) => {
   switch(status) {
@@ -28,6 +29,7 @@ const formatRouteId = (route: RouteItem | null) => {
 export default function RoutesPage() {
   const { data: routes, loading, add, update, remove } = useCollection<RouteItem>('routes');
   const { data: drivers } = useCollection<any>('drivers');
+  const { data: externalRequests, update: updateRequest } = useCollection<ExternalRequest>('external_requests');
   const [matrizAddress, setMatrizAddress] = useState<string>('');
 
   useEffect(() => {
@@ -48,6 +50,8 @@ export default function RoutesPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isManageModalOpen, setIsManageModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [isRequestsModalOpen, setIsRequestsModalOpen] = useState(false);
+  const [selectedRequestIds, setSelectedRequestIds] = useState<string[]>([]);
   const [selectedRoute, setSelectedRoute] = useState<RouteItem | null>(null);
   const [editingRoute, setEditingRoute] = useState<RouteItem | null>(null);
   const [newRoute, setNewRoute] = useState({
@@ -265,10 +269,10 @@ export default function RoutesPage() {
       id: `stop-${index}`,
       address: item.addr,
       status: 'pending' as const,
-      orderNumber: item.meta.orderNumber,
-      customerName: item.meta.customerName,
-      customerPhone: item.meta.customerPhone,
-      observation: item.meta.observation,
+      orderNumber: item.meta.orderNumber || '',
+      customerName: item.meta.customerName || '',
+      customerPhone: item.meta.customerPhone || '',
+      observation: item.meta.observation || '',
     }));
 
     if (newRoute.destination && newRoute.destination.trim() !== '' && !newRoute.returnToMatriz) {
@@ -344,26 +348,31 @@ export default function RoutesPage() {
     }
     
     const validEditIntermediates = finalIntermediates?.map((addr, i) => ({ addr, meta: finalMetadata[i] || {} })).filter(item => item.addr.trim() !== '') || [];
-    const stopDetails = validEditIntermediates.map((item, index) => ({
-      id: `stop-${index}`,
-      address: item.addr,
-      status: 'pending' as const,
-      orderNumber: item.meta.orderNumber,
-      customerName: item.meta.customerName,
-      customerPhone: item.meta.customerPhone,
-      observation: item.meta.observation,
-    }));
+    const stopDetails = validEditIntermediates.map((item, index) => {
+      // Preserve existing status if the address matches an existing stop
+      const existingStop = editingRoute.stopDetails?.find(s => s.address === item.addr);
+      return {
+        id: existingStop ? existingStop.id : `stop-${index}`,
+        address: item.addr,
+        status: existingStop ? existingStop.status : ('pending' as const),
+        orderNumber: item.meta.orderNumber || '',
+        customerName: item.meta.customerName || '',
+        customerPhone: item.meta.customerPhone || '',
+        observation: item.meta.observation || '',
+      };
+    });
 
     if (updatedRoute.destination && updatedRoute.destination.trim() !== '' && !updatedRoute.returnToMatriz) {
+       const existingDest = editingRoute.stopDetails?.find(s => s.address === updatedRoute.destination);
        stopDetails.push({
-         id: `stop-${stopDetails.length}`,
+         id: existingDest ? existingDest.id : `stop-${stopDetails.length}`,
          address: updatedRoute.destination,
-         status: 'pending' as const
+         status: existingDest ? existingDest.status : ('pending' as const)
        });
     }
     
     await update(editingRoute.id, {
-      driver: updatedRoute.driver,
+      driver: updatedRoute.driver || 'Aguardando',
       status: updatedRoute.status,
       stops: updatedRoute.stops,
       distance: finalDistance,
@@ -534,6 +543,9 @@ export default function RoutesPage() {
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50 p-3 rounded-xl border border-slate-100">
                   <div className="text-sm font-semibold text-slate-800">Paradas da Rota</div>
                   <div className="flex gap-2">
+                    <button type="button" onClick={() => setIsRequestsModalOpen(true)} className="text-xs font-semibold px-3 py-1.5 bg-emerald-500 text-white rounded-lg shadow-sm hover:bg-emerald-600 flex items-center gap-1.5 transition-colors">
+                      <Package size={14} /> Puxar Solicitações
+                    </button>
                     <button type="button" onClick={downloadCSVTemplate} className="text-xs font-semibold px-3 py-1.5 bg-white border border-slate-200 text-slate-700 rounded-lg shadow-sm hover:bg-slate-50 flex items-center gap-1.5">
                       <Download size={14} /> Modelo CSV
                     </button>
@@ -1200,6 +1212,106 @@ export default function RoutesPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Requests Modal */}
+      {isRequestsModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl w-full max-w-3xl max-h-[90vh] overflow-hidden flex flex-col shadow-xl">
+            <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+              <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+                <Package size={24} className="text-emerald-500" />
+                Puxar Solicitações Pendentes
+              </h2>
+              <button onClick={() => setIsRequestsModalOpen(false)} className="text-slate-400 hover:text-slate-600 hover:bg-slate-200 p-2 rounded-full transition-colors">
+                <X size={20} />
+              </button>
+            </div>
+            
+            <div className="p-6 overflow-y-auto flex-1 bg-slate-50/50">
+              {externalRequests?.filter(r => r.status === 'pending').length === 0 ? (
+                <div className="text-center py-10 text-slate-500">
+                  <Package size={48} className="mx-auto mb-4 text-slate-300" />
+                  <p>Não há solicitações pendentes no momento.</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {externalRequests?.filter(r => r.status === 'pending').map(req => {
+                    const isSelected = selectedRequestIds.includes(req.id);
+                    return (
+                      <div 
+                        key={req.id}
+                        onClick={() => {
+                          if (isSelected) {
+                            setSelectedRequestIds(prev => prev.filter(id => id !== req.id));
+                          } else {
+                            setSelectedRequestIds(prev => [...prev, req.id]);
+                          }
+                        }}
+                        className={`p-4 rounded-xl border-2 cursor-pointer transition-all flex items-start gap-4 ${isSelected ? 'border-emerald-500 bg-emerald-50/50' : 'border-slate-200 bg-white hover:border-emerald-200'}`}
+                      >
+                        <div className={`mt-1 w-5 h-5 rounded border flex items-center justify-center ${isSelected ? 'bg-emerald-500 border-emerald-500 text-white' : 'border-slate-300'}`}>
+                          {isSelected && <CheckCircle size={14} />}
+                        </div>
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="font-bold text-slate-800 capitalize">{req.type}</span>
+                            <span className="text-xs text-slate-500">{new Date(req.createdAt).toLocaleString('pt-BR')}</span>
+                          </div>
+                          <p className="text-sm font-medium text-slate-700 mb-1">{req.address}</p>
+                          <div className="flex gap-4 text-xs text-slate-500">
+                            <span><strong className="text-slate-600">Ped/OS:</strong> {req.orderNumber || req.osNumber || '-'}</span>
+                            <span><strong className="text-slate-600">Nome:</strong> {req.requesterName || '-'}</span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+            
+            <div className="p-6 border-t border-slate-100 flex gap-3">
+              <button 
+                type="button"
+                onClick={() => setIsRequestsModalOpen(false)}
+                className="flex-1 px-4 py-2.5 bg-white border border-slate-200 text-slate-700 rounded-xl font-semibold hover:bg-slate-50 transition-colors shadow-sm"
+              >
+                Cancelar
+              </button>
+              <button 
+                type="button"
+                onClick={() => {
+                  const selectedReqs = externalRequests?.filter(r => selectedRequestIds.includes(r.id)) || [];
+                  const newStops = [...(newRoute.intermediates || [])];
+                  const newMeta = [...(newRoute.intermediateMetadata || [])];
+                  
+                  selectedReqs.forEach(req => {
+                    newStops.push(req.address);
+                    newMeta.push({
+                      orderNumber: req.orderNumber || req.osNumber || '',
+                      customerName: req.requesterName || '',
+                      customerPhone: req.contactPhone || '',
+                      observation: req.observations || ''
+                    });
+                  });
+                  
+                  setNewRoute({
+                    ...newRoute,
+                    intermediates: newStops,
+                    intermediateMetadata: newMeta,
+                    stops: Math.max(1, newStops.length)
+                  });
+                  setIsRequestsModalOpen(false);
+                }}
+                disabled={selectedRequestIds.length === 0}
+                className="flex-1 px-4 py-2.5 bg-emerald-500 text-white rounded-xl font-semibold hover:bg-emerald-600 transition-colors shadow-sm disabled:opacity-50"
+              >
+                Importar ({selectedRequestIds.length})
+              </button>
+            </div>
           </div>
         </div>
       )}

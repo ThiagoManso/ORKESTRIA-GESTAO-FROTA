@@ -12,6 +12,7 @@ import FinancialPage from './pages/FinancialPage';
 import IssuesPage from './pages/IssuesPage';
 import MapPage from './pages/MapPage';
 import SettingsPage from './pages/SettingsPage';
+import RequestsPage from './pages/RequestsPage';
 import { ViewState } from './types';
 
 const API_KEY =
@@ -85,6 +86,8 @@ export default function App() {
         return <FinancialPage />;
       case 'issues':
         return <IssuesPage />;
+      case 'requests':
+        return <RequestsPage />;
       case 'map':
         return <MapPage />;
       case 'settings':

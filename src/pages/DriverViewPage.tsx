@@ -208,7 +208,7 @@ export default function DriverViewPage({ driverId, driverName, driverStatus }: D
   const activeRoute = routes?.find(r => r.status === 'in_progress' && r.driver === driverName);
   
   // Filter pending routes
-  const pendingRoutes = routes?.filter(r => r.status === 'pending' && (r.driver === driverName || r.driver === 'Aguardando')) || [];
+  const pendingRoutes = routes?.filter(r => r.status === 'pending' && r.driver === driverName) || [];
 
   useEffect(() => {
     if (pendingRoutes.length > 0) {
