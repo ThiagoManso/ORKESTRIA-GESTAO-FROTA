@@ -702,16 +702,6 @@ export default function RoutesPage() {
                   )}
                 </div>
 
-                <div>
-                  <label className="block text-sm font-semibold text-slate-700 mb-1.5">Data e Hora de Saída (Opcional)</label>
-                  <input 
-                    type="datetime-local" 
-                    value={newRoute.departureTime || ''}
-                    onChange={(e) => setNewRoute({...newRoute, departureTime: e.target.value})}
-                    className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:border-primary focus:ring-1 focus:ring-primary shadow-sm"
-                  />
-                  <p className="text-xs text-slate-500 mt-1">Se não preenchido, será considerado o momento atual.</p>
-                </div>
 
                 <div>
                   <button
@@ -1139,17 +1129,6 @@ export default function RoutesPage() {
                         />
                       </div>
                     )}
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-semibold text-slate-700 mb-1.5">Data e Hora de Saída (Opcional)</label>
-                    <input 
-                      type="datetime-local" 
-                      value={editingRoute.departureTime || ''}
-                      onChange={(e) => setEditingRoute({...editingRoute, departureTime: e.target.value})}
-                      className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:border-primary focus:ring-1 focus:ring-primary shadow-sm"
-                    />
-                    <p className="text-xs text-slate-500 mt-1">Se não preenchido, será considerado o momento atual.</p>
                   </div>
                 </div>
 
