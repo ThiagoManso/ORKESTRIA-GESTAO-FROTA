@@ -22,7 +22,9 @@ export interface RouteItem {
     status: 'pending' | 'completed' | 'issue';
     issueDescription?: string;
     issuePhotoUrl?: string;
+    timestamp?: string;
   }[];
+  returnToMatriz?: boolean;
 }
 
 export interface Driver {

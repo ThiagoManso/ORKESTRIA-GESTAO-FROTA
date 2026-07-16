@@ -60,6 +60,7 @@ export default function RoutesPage() {
     stops: 1,
     distance: 0,
     estimatedTime: '',
+    returnToMatriz: false,
   });
   
   const [isCalculating, setIsCalculating] = useState(false);
@@ -181,7 +182,7 @@ export default function RoutesPage() {
         status: 'pending' as const
       }));
 
-    if (newRoute.destination && newRoute.destination.trim() !== '') {
+    if (newRoute.destination && newRoute.destination.trim() !== '' && !newRoute.returnToMatriz) {
        stopDetails.push({
          id: `stop-${stopDetails.length}`,
          address: newRoute.destination,
@@ -208,6 +209,7 @@ export default function RoutesPage() {
       destination: newRoute.destination,
       intermediates: finalIntermediates,
       stopDetails,
+      returnToMatriz: newRoute.returnToMatriz,
     });
     
     setIsModalOpen(false);
@@ -221,6 +223,7 @@ export default function RoutesPage() {
       stops: 1,
       distance: 0,
       estimatedTime: '',
+      returnToMatriz: false,
     });
   };
 
@@ -257,7 +260,7 @@ export default function RoutesPage() {
         status: 'pending' as const
       })) || [];
 
-    if (updatedRoute.destination && updatedRoute.destination.trim() !== '') {
+    if (updatedRoute.destination && updatedRoute.destination.trim() !== '' && !updatedRoute.returnToMatriz) {
        stopDetails.push({
          id: `stop-${stopDetails.length}`,
          address: updatedRoute.destination,
@@ -498,18 +501,42 @@ export default function RoutesPage() {
                 )}
 
                 <div>
-                  <div className="flex justify-between items-center mb-1.5">
-                    <label className="block text-sm font-semibold text-slate-700">Destino</label>
-                    <button type="button" onClick={() => setNewRoute({...newRoute, destination: matrizAddress})} className="text-xs text-indigo-600 hover:text-indigo-700 font-medium">Usar Matriz</button>
+                  <div className="flex items-center gap-2 mb-3">
+                    <input 
+                      type="checkbox" 
+                      id="returnToMatriz"
+                      checked={newRoute.returnToMatriz || false}
+                      onChange={(e) => {
+                        const checked = e.target.checked;
+                        setNewRoute({
+                          ...newRoute, 
+                          returnToMatriz: checked,
+                          destination: checked ? matrizAddress : ''
+                        });
+                      }}
+                      className="w-4 h-4 text-indigo-600 rounded focus:ring-indigo-500"
+                    />
+                    <label htmlFor="returnToMatriz" className="text-sm font-semibold text-slate-700 cursor-pointer flex-1">
+                      Ponto final é o retorno para a Matriz (Não conta como parada)
+                    </label>
                   </div>
-                  <input 
-                    type="text" 
-                    required
-                    value={newRoute.destination}
-                    onChange={(e) => setNewRoute({...newRoute, destination: e.target.value})}
-                    className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:border-primary focus:ring-1 focus:ring-primary shadow-sm"
-                    placeholder="Endereço de chegada"
-                  />
+                  
+                  {!newRoute.returnToMatriz && (
+                    <div>
+                      <div className="flex justify-between items-center mb-1.5">
+                        <label className="block text-sm font-semibold text-slate-700">Destino</label>
+                        <button type="button" onClick={() => setNewRoute({...newRoute, destination: matrizAddress})} className="text-xs text-indigo-600 hover:text-indigo-700 font-medium">Usar Matriz</button>
+                      </div>
+                      <input 
+                        type="text" 
+                        required={!newRoute.returnToMatriz}
+                        value={newRoute.destination}
+                        onChange={(e) => setNewRoute({...newRoute, destination: e.target.value})}
+                        className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:border-primary focus:ring-1 focus:ring-primary shadow-sm"
+                        placeholder="Endereço de chegada"
+                      />
+                    </div>
+                  )}
                 </div>
 
                 <div>
@@ -914,17 +941,41 @@ export default function RoutesPage() {
                   )}
 
                   <div>
-                    <div className="flex justify-between items-center mb-1.5">
-                      <label className="block text-sm font-semibold text-slate-700">Destino</label>
-                      <button type="button" onClick={() => setEditingRoute({...editingRoute, destination: matrizAddress})} className="text-xs text-indigo-600 hover:text-indigo-700 font-medium">Usar Matriz</button>
+                    <div className="flex items-center gap-2 mb-3">
+                      <input 
+                        type="checkbox" 
+                        id="editReturnToMatriz"
+                        checked={editingRoute.returnToMatriz || false}
+                        onChange={(e) => {
+                          const checked = e.target.checked;
+                          setEditingRoute({
+                            ...editingRoute, 
+                            returnToMatriz: checked,
+                            destination: checked ? matrizAddress : editingRoute.destination
+                          });
+                        }}
+                        className="w-4 h-4 text-indigo-600 rounded focus:ring-indigo-500"
+                      />
+                      <label htmlFor="editReturnToMatriz" className="text-sm font-semibold text-slate-700 cursor-pointer flex-1">
+                        Ponto final é o retorno para a Matriz (Não conta como parada)
+                      </label>
                     </div>
-                    <input 
-                      type="text" 
-                      value={editingRoute.destination || ''}
-                      onChange={(e) => setEditingRoute({...editingRoute, destination: e.target.value})}
-                      className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:border-primary focus:ring-1 focus:ring-primary shadow-sm"
-                      placeholder="Endereço de chegada"
-                    />
+
+                    {!editingRoute.returnToMatriz && (
+                      <div>
+                        <div className="flex justify-between items-center mb-1.5">
+                          <label className="block text-sm font-semibold text-slate-700">Destino</label>
+                          <button type="button" onClick={() => setEditingRoute({...editingRoute, destination: matrizAddress})} className="text-xs text-indigo-600 hover:text-indigo-700 font-medium">Usar Matriz</button>
+                        </div>
+                        <input 
+                          type="text" 
+                          value={editingRoute.destination || ''}
+                          onChange={(e) => setEditingRoute({...editingRoute, destination: e.target.value})}
+                          className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:border-primary focus:ring-1 focus:ring-primary shadow-sm"
+                          placeholder="Endereço de chegada"
+                        />
+                      </div>
+                    )}
                   </div>
 
                   <div>
