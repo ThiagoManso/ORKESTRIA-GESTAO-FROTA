@@ -514,7 +514,7 @@ export default function Dashboard() {
                       </td>
                     </tr>
                   ))}
-                  {allStops.length === 0 && (
+                  {periodStops.length === 0 && (
                     <tr>
                       <td colSpan={6} className="p-8 text-center text-slate-500 text-sm">
                         Nenhuma parada encontrada.
