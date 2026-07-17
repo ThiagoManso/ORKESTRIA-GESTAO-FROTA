@@ -506,6 +506,72 @@ export default function RoutesPage() {
     }
   };
 
+  const handleRemoveStopFromRoute = async (routeId: string, stopToRemove: any) => {
+    const route = routes.find(r => r.id === routeId);
+    if (!route) return;
+    
+    if (!window.confirm('Tem certeza que deseja remover esta parada da rota? Ela retornará ao Banco de Demandas.')) {
+      return;
+    }
+
+    try {
+      if (stopToRemove.externalRequestId) {
+        const reqRef = doc(db, 'external_requests', stopToRemove.externalRequestId);
+        await updateDoc(reqRef, { status: 'pending' });
+      } else {
+        await addDoc(collection(db, 'external_requests'), {
+          type: 'entrega',
+          address: stopToRemove.address,
+          orderNumber: stopToRemove.orderNumber || '',
+          requesterName: stopToRemove.customerName || '',
+          contactPhone: stopToRemove.customerPhone || '',
+          observations: stopToRemove.observation || '',
+          scheduledDate: '',
+          status: 'pending',
+          read: true,
+          createdAt: new Date().toISOString(),
+          lat: stopToRemove.lat || null,
+          lng: stopToRemove.lng || null
+        });
+      }
+
+      // Remove from arrays
+      let newIntermediates = [...(route.intermediates || [])];
+      let newMeta = [...((route as any).intermediateMetadata || [])];
+      
+      const indexToRemove = newIntermediates.findIndex(addr => addr === stopToRemove.address);
+      if (indexToRemove !== -1) {
+        newIntermediates.splice(indexToRemove, 1);
+        newMeta.splice(indexToRemove, 1);
+      }
+
+      const newStopDetails = route.stopDetails?.filter(s => s.id !== stopToRemove.id) || [];
+      const newStopsCount = Math.max(1, newStopDetails.length);
+
+      await update(route.id, {
+        intermediates: newIntermediates,
+        intermediateMetadata: newMeta,
+        stopDetails: newStopDetails,
+        stops: newStopsCount
+      });
+      
+      if (selectedRoute?.id === route.id) {
+        setSelectedRoute(prev => prev ? {
+          ...prev,
+          intermediates: newIntermediates,
+          intermediateMetadata: newMeta,
+          stopDetails: newStopDetails,
+          stops: newStopsCount
+        } : null);
+      }
+
+      alert('Parada removida e enviada para o Banco de Demandas.');
+    } catch (err) {
+      console.error(err);
+      alert('Erro ao remover parada.');
+    }
+  };
+
 
   const currentManageRoute = selectedRoute ? (routes.find(r => r.id === selectedRoute.id) || selectedRoute) : null;
 
@@ -1008,10 +1074,20 @@ export default function RoutesPage() {
                           }`} />
                           <div className="flex-1">
                             <div className="text-sm font-medium text-slate-800">{stop.address}</div>
-                            <div className="text-xs text-slate-500 mb-1">
-                              {stop.status === 'completed' && <span className="text-emerald-600">Entregue</span>}
-                              {stop.status === 'issue' && <span className="text-red-600 font-medium">Problema reportado</span>}
-                              {stop.status === 'pending' && <span>Pendente</span>}
+                            <div className="flex items-center justify-between">
+                              <div className="text-xs text-slate-500 mb-1">
+                                {stop.status === 'completed' && <span className="text-emerald-600">Entregue</span>}
+                                {stop.status === 'issue' && <span className="text-red-600 font-medium">Problema reportado</span>}
+                                {stop.status === 'pending' && <span>Pendente</span>}
+                              </div>
+                              {stop.status === 'pending' && (
+                                <button
+                                  onClick={() => handleRemoveStopFromRoute(currentManageRoute.id, stop)}
+                                  className="text-xs text-red-500 hover:text-red-600 font-medium hover:underline px-2 py-1 bg-red-50 rounded-md transition-colors"
+                                >
+                                  Desvincular
+                                </button>
+                              )}
                             </div>
                             {stop.status === 'issue' && (stop.issueDescription || stop.issuePhotoUrl) && (
                               <div className="mt-2 bg-red-50 border border-red-100 rounded-lg p-3">

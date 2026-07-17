@@ -3,11 +3,13 @@ import { useCollection } from '../lib/useCollection';
 import { ExternalRequest } from '../types';
 import { Package, MapPin, CheckCircle, Clock, Search, Trash2, Calendar, Upload, Download, Plus, LayoutGrid, List as ListIcon, X } from 'lucide-react';
 import { useMapsLibrary } from '@vis.gl/react-google-maps';
-import { addDoc, collection } from 'firebase/firestore';
+import { addDoc, collection, doc, updateDoc, getDocs, query, where } from 'firebase/firestore';
 import { db } from '../lib/firebase';
+import { RouteItem } from '../types';
 
 export default function RequestsPage() {
   const { data: requests, update, remove, loading } = useCollection<ExternalRequest>('external_requests');
+  const { data: routes } = useCollection<RouteItem>('routes');
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState<'all' | 'pending' | 'on_route' | 'completed'>('all');
   const [filterDate, setFilterDate] = useState<string>(''); // YYYY-MM-DD
@@ -248,6 +250,49 @@ export default function RequestsPage() {
     await update(id, { status: 'on_route' });
   };
 
+  const handleDesvincular = async (id: string) => {
+    if (!window.confirm('Tem certeza que deseja desvincular esta demanda da rota e retornar para Pendente?')) return;
+    
+    try {
+      // Update request to pending
+      await update(id, { status: 'pending' });
+      
+      // Try to find the route containing this request and remove it
+      if (routes) {
+        for (const route of routes) {
+          const stopIndex = route.stopDetails?.findIndex(s => s.externalRequestId === id);
+          if (stopIndex !== undefined && stopIndex !== -1 && route.stopDetails) {
+            let newIntermediates = [...(route.intermediates || [])];
+            let newMeta = [...(route.intermediateMetadata || [])];
+            
+            const address = route.stopDetails[stopIndex].address;
+            const indexToRemove = newIntermediates.findIndex(addr => addr === address);
+            if (indexToRemove !== -1) {
+              newIntermediates.splice(indexToRemove, 1);
+              newMeta.splice(indexToRemove, 1);
+            }
+
+            const newStopDetails = route.stopDetails.filter(s => s.externalRequestId !== id);
+            const newStopsCount = Math.max(1, newStopDetails.length);
+            
+            const routeRef = doc(db, 'routes', route.id);
+            await updateDoc(routeRef, {
+              intermediates: newIntermediates,
+              intermediateMetadata: newMeta,
+              stopDetails: newStopDetails,
+              stops: newStopsCount
+            });
+          }
+        }
+      }
+      
+      alert('Demanda desvinculada com sucesso!');
+    } catch (err) {
+      console.error(err);
+      alert('Erro ao desvincular demanda.');
+    }
+  };
+
   const handleDelete = async (id: string) => {
     if (window.confirm('Tem certeza que deseja excluir esta demanda?')) {
       await remove(id);
@@ -261,7 +306,7 @@ export default function RequestsPage() {
   };
 
   return (
-    <div className="p-4 sm:p-8 max-w-7xl mx-auto animate-in fade-in duration-500">
+    <div className="p-4 sm:p-6 lg:p-8 w-full h-full flex flex-col animate-in fade-in slide-in-from-bottom-4 duration-500">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8 gap-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-800">Banco de Demandas</h1>
@@ -301,7 +346,7 @@ export default function RequestsPage() {
         </div>
       </div>
 
-      <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex flex-col h-[calc(100vh-200px)]">
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm flex-1 flex flex-col overflow-hidden">
         <div className="p-4 border-b border-slate-200 bg-slate-50 flex flex-col sm:flex-row gap-4">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
@@ -410,12 +455,23 @@ export default function RequestsPage() {
                               <td className="p-3 text-slate-600 truncate max-w-[150px]">{request.requesterName}</td>
                               <td className="p-3 text-slate-600">{request.orderNumber || request.osNumber || '-'}</td>
                               <td className="p-3 text-center">
-                                <button 
-                                  onClick={(e) => { e.stopPropagation(); handleDelete(request.id); }}
-                                  className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
-                                >
-                                  <Trash2 size={16} />
-                                </button>
+                                <div className="flex items-center justify-center gap-2">
+                                  {request.status === 'on_route' && (
+                                    <button 
+                                      onClick={(e) => { e.stopPropagation(); handleDesvincular(request.id); }}
+                                      title="Desvincular da rota"
+                                      className="p-1.5 text-slate-400 hover:text-amber-500 hover:bg-amber-50 rounded-lg transition-colors"
+                                    >
+                                      <X size={16} />
+                                    </button>
+                                  )}
+                                  <button 
+                                    onClick={(e) => { e.stopPropagation(); handleDelete(request.id); }}
+                                    className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                                  >
+                                    <Trash2 size={16} />
+                                  </button>
+                                </div>
                               </td>
                             </tr>
                           ))}
