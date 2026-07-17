@@ -73,7 +73,7 @@ export default function RoutesPage() {
   useEffect(() => {
     // Check if we arrived here from Map selection
     const mapSelection = localStorage.getItem('mapSelectedRequests');
-    if (mapSelection && externalRequests) {
+    if (mapSelection && externalRequests && externalRequests.length > 0) {
       try {
         const selectedIds = JSON.parse(mapSelection);
         if (Array.isArray(selectedIds) && selectedIds.length > 0) {
@@ -104,12 +104,13 @@ export default function RoutesPage() {
             
             setSelectedRequestIds(selectedIds);
             setIsModalOpen(true);
+            localStorage.removeItem('mapSelectedRequests');
           }
         }
       } catch (e) {
         console.error("Error parsing map selection", e);
+        localStorage.removeItem('mapSelectedRequests');
       }
-      localStorage.removeItem('mapSelectedRequests');
     }
   }, [externalRequests]);
 
@@ -519,12 +520,6 @@ export default function RoutesPage() {
         <div className="flex gap-3 w-full sm:w-auto">
           <button className="flex-1 sm:flex-none flex justify-center items-center gap-2 px-4 py-2.5 bg-white border border-slate-200 text-slate-700 rounded-xl font-medium hover:bg-slate-50 transition-colors shadow-sm">
             <Filter size={18} /> Filtros
-          </button>
-          <button 
-            onClick={() => setIsModalOpen(true)}
-            className="flex-1 sm:flex-none px-4 py-2.5 bg-gradient-to-r from-[var(--color-brand-cyan)] to-[var(--color-brand-blue)] text-white rounded-xl font-medium hover:opacity-90 transition-opacity shadow-sm"
-          >
-            Nova Rota
           </button>
         </div>
       </div>
