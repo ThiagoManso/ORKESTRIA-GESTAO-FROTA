@@ -93,6 +93,7 @@ export default function Dashboard() {
 
   const parseStrDate = (dateStr?: string) => {
     if (!dateStr) return new Date(0);
+    if (dateStr.toLowerCase() === 'hoje') return new Date();
     if (dateStr.includes('/')) {
       const parts = dateStr.split('/');
       return new Date(`${parts[2]}-${parts[1]}-${parts[0]}T12:00:00`);
@@ -179,7 +180,7 @@ export default function Dashboard() {
   const dynamicDeliveryData = chartDates.map(dateObj => {
     const isoDate = dateObj.toISOString().split('T')[0];
     const localDate = dateObj.toLocaleDateString('pt-BR');
-    const stopsOnDate = periodStops.filter(s => s.routeDate === isoDate || s.routeDate === localDate || (s.routeDate && s.routeDate.includes(localDate)));
+    const stopsOnDate = periodStops.filter(s => s.routeDate === isoDate || s.routeDate === localDate || (s.routeDate && s.routeDate.includes(localDate)) || (s.routeDate?.toLowerCase() === 'hoje' && localDate === new Date().toLocaleDateString('pt-BR')));
     return {
       name: localDate.slice(0, 5), // DD/MM
       success: stopsOnDate.filter(s => s.status === 'completed').length,

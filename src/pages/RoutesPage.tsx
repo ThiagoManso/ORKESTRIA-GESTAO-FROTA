@@ -326,7 +326,7 @@ export default function RoutesPage() {
     }
     setIsCalculating(false);
     
-    let formattedDate = 'Hoje';
+    let formattedDate = new Date().toLocaleDateString('pt-BR');
     if (newRoute.departureTime) {
       const d = new Date(newRoute.departureTime);
       formattedDate = d.toLocaleDateString('pt-BR');
