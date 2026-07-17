@@ -7,23 +7,6 @@ import {
   PieChart, Pie, Cell
 } from 'recharts';
 
-const deliveryData = [
-  { name: '05/07', success: 12000, failed: 800 },
-  { name: '06/07', success: 13500, failed: 950 },
-  { name: '07/07', success: 11000, failed: 700 },
-  { name: '08/07', success: 14200, failed: 1100 },
-  { name: '09/07', success: 15100, failed: 1200 },
-  { name: '10/07', success: 13800, failed: 900 },
-  { name: '11/07', success: 16500, failed: 1050 },
-];
-
-const statusData = [
-  { name: 'Entregue', value: 85, color: '#10b981' },
-  { name: 'Em Rota', value: 10, color: '#3b82f6' },
-  { name: 'Atrasado', value: 3, color: '#f59e0b' },
-  { name: 'Insucesso', value: 2, color: '#ef4444' },
-];
-
 const StatCard = ({ title, value, icon: Icon, trend, trendLabel, gradientClass }: any) => (
   <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col h-full hover:shadow-md transition-shadow">
     <div className="flex justify-between items-start mb-4">
@@ -45,32 +28,102 @@ const StatCard = ({ title, value, icon: Icon, trend, trendLabel, gradientClass }
 
 export default function Dashboard() {
   const [activeTab, setActiveTab] = useState<'geral' | 'kpis' | 'stops'>('geral');
+  const [dateFilter, setDateFilter] = useState('today');
+  const [customStartDate, setCustomStartDate] = useState('');
+  const [customEndDate, setCustomEndDate] = useState('');
+  
   const { data: dailyLogs } = useCollection<DailyLog>('dailyLogs');
   const { data: routes } = useCollection<RouteItem>('routes');
+  const { data: drivers } = useCollection<any>('drivers');
 
   // Calculate KPIs
   const todayStr = new Date().toISOString().split('T')[0];
-  const todaysLogs = dailyLogs?.filter(l => l.date === todayStr) || [];
+  const localTodayStr = new Date().toLocaleDateString('pt-BR');
   
-  const totalKmToday = todaysLogs.reduce((acc, log) => {
+  // Calculate Date Filter Range
+  let chartDates: Date[] = [];
+  const now = new Date();
+  
+  if (dateFilter === 'today') {
+    chartDates = [new Date()];
+  } else if (dateFilter === '7days') {
+    chartDates = Array.from({length: 7}).map((_, i) => {
+      const d = new Date();
+      d.setDate(d.getDate() - (6 - i));
+      return d;
+    });
+  } else if (dateFilter === '30days') {
+    chartDates = Array.from({length: 30}).map((_, i) => {
+      const d = new Date();
+      d.setDate(d.getDate() - (29 - i));
+      return d;
+    });
+  } else if (dateFilter === 'this_month') {
+    const daysInMonth = now.getDate();
+    chartDates = Array.from({length: daysInMonth}).map((_, i) => {
+      const d = new Date(now.getFullYear(), now.getMonth(), i + 1);
+      return d;
+    });
+  } else if (dateFilter === 'custom' && customStartDate && customEndDate) {
+    const start = new Date(customStartDate + 'T00:00:00');
+    const end = new Date(customEndDate + 'T00:00:00');
+    const diffTime = Math.abs(end.getTime() - start.getTime());
+    let diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
+    if (diffDays > 90) diffDays = 90; // limit
+    
+    chartDates = Array.from({length: diffDays}).map((_, i) => {
+      const d = new Date(start);
+      d.setDate(start.getDate() + i);
+      return d;
+    });
+  } else {
+    // default
+    chartDates = Array.from({length: 7}).map((_, i) => {
+      const d = new Date();
+      d.setDate(d.getDate() - (6 - i));
+      return d;
+    });
+  }
+
+  const startDateObj = chartDates.length > 0 ? new Date(chartDates[0]) : new Date();
+  startDateObj.setHours(0, 0, 0, 0);
+  const endDateObj = chartDates.length > 0 ? new Date(chartDates[chartDates.length - 1]) : new Date();
+  endDateObj.setHours(23, 59, 59, 999);
+
+  const parseStrDate = (dateStr?: string) => {
+    if (!dateStr) return new Date(0);
+    if (dateStr.includes('/')) {
+      const parts = dateStr.split('/');
+      return new Date(`${parts[2]}-${parts[1]}-${parts[0]}T12:00:00`);
+    }
+    return new Date(dateStr + 'T12:00:00');
+  };
+
+  // Filter Daily Logs by Period
+  const periodLogs = dailyLogs?.filter(l => {
+    const d = parseStrDate(l.date);
+    return d >= startDateObj && d <= endDateObj;
+  }) || [];
+  
+  const totalKmPeriod = periodLogs.reduce((acc, log) => {
     if (log.finalKm && log.finalKm > log.initialKm) {
       return acc + (log.finalKm - log.initialKm);
     }
     return acc;
   }, 0);
 
-  const completedLogs = dailyLogs?.filter(l => l.status === 'completed' && l.finalKm && l.finalKm > l.initialKm) || [];
-  const totalKmAllTime = completedLogs.reduce((acc, log) => acc + (log.finalKm! - log.initialKm), 0);
+  const completedPeriodLogs = periodLogs.filter(l => l.status === 'completed' && l.finalKm && l.finalKm > l.initialKm);
+  const totalKmAllTime = completedPeriodLogs.reduce((acc, log) => acc + (log.finalKm! - log.initialKm), 0);
   
-  const uniqueDrivers = new Set(completedLogs.map(l => l.driverId)).size;
-  const uniqueVehicles = new Set(completedLogs.map(l => l.vehicleId)).size;
+  const uniqueDrivers = new Set(completedPeriodLogs.map(l => l.driverId)).size;
+  const uniqueVehicles = new Set(completedPeriodLogs.map(l => l.vehicleId)).size;
   
   const avgKmPerDriver = uniqueDrivers > 0 ? Math.round(totalKmAllTime / uniqueDrivers) : 0;
   const avgKmPerVehicle = uniqueVehicles > 0 ? Math.round(totalKmAllTime / uniqueVehicles) : 0;
 
 
-  // Calculate Stops Data
-  const allStops = routes?.flatMap(r => {
+  // Calculate Stops Data by Period
+  const allStopsRaw = routes?.flatMap(r => {
     if (!r.stopDetails) return [];
     return r.stopDetails.map(stop => ({
       ...stop,
@@ -80,11 +133,52 @@ export default function Dashboard() {
       routeDate: r.date
     }));
   }) || [];
+
+  const periodStops = allStopsRaw.filter(s => {
+    const d = parseStrDate(s.routeDate);
+    return d >= startDateObj && d <= endDateObj;
+  });
   
-  const totalStops = allStops.length;
-  const completedStops = allStops.filter(s => s.status === 'completed').length;
-  const pendingStops = allStops.filter(s => s.status === 'pending').length;
-  const issueStops = allStops.filter(s => s.status === 'issue').length;
+  const totalStops = periodStops.length;
+  const completedStops = periodStops.filter(s => s.status === 'completed').length;
+  const pendingStops = periodStops.filter(s => s.status === 'pending').length;
+  const issueStops = periodStops.filter(s => s.status === 'issue').length;
+
+  const activeDriversCount = drivers?.filter(d => d.status === 'active' || d.status === 'on_route').length || 0;
+  const activeRoutesCount = routes?.filter(r => r.status === 'in_progress').length || 0;
+  const totalDeliveries = completedStops;
+  const slaPercentage = (completedStops + issueStops) > 0 
+    ? ((completedStops / (completedStops + issueStops)) * 100).toFixed(1) 
+    : '100.0';
+
+  const dynamicDeliveryData = chartDates.map(dateObj => {
+    const isoDate = dateObj.toISOString().split('T')[0];
+    const localDate = dateObj.toLocaleDateString('pt-BR');
+    const stopsOnDate = periodStops.filter(s => s.routeDate === isoDate || s.routeDate === localDate || (s.routeDate && s.routeDate.includes(localDate)));
+    return {
+      name: localDate.slice(0, 5), // DD/MM
+      success: stopsOnDate.filter(s => s.status === 'completed').length,
+      failed: stopsOnDate.filter(s => s.status === 'issue').length
+    };
+  });
+
+  // Dynamic Pie Chart Data (still scoped to the selected period)
+  const todaysCompleted = completedStops;
+  const todaysPending = pendingStops;
+  const todaysIssue = issueStops;
+  
+  const dynamicStatusData = [
+    { name: 'Entregue', value: todaysCompleted, color: '#10b981' },
+    { name: 'Pendente', value: todaysPending, color: '#3b82f6' },
+    { name: 'Insucesso', value: todaysIssue, color: '#ef4444' },
+  ].filter(d => d.value > 0);
+  
+  if (dynamicStatusData.length === 0) {
+    dynamicStatusData.push({ name: 'Sem dados no período', value: 1, color: '#e2e8f0' });
+  }
+
+  // Active Route Alerts (Stops with issues in period)
+  const activeAlerts = periodStops.filter(s => s.status === 'issue').slice(0, 5);
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 w-full mx-auto space-y-6 sm:space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -94,11 +188,34 @@ export default function Dashboard() {
           <h1 className="text-2xl font-bold text-slate-800 mb-1">Torre de Controle</h1>
           <p className="text-slate-500 text-sm sm:text-base">Acompanhamento em tempo real da sua operação logística.</p>
         </div>
-        <div className="flex gap-2 w-full sm:w-auto">
-          <select className="flex-1 sm:flex-none bg-white border border-slate-200 text-sm rounded-xl px-4 py-2.5 outline-none focus:ring-2 focus:ring-primary/20 shadow-sm cursor-pointer">
-            <option>Últimos 7 dias</option>
-            <option>Últimos 30 dias</option>
-            <option>Este mês</option>
+        <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto items-end">
+          {dateFilter === 'custom' && (
+            <div className="flex gap-2 w-full sm:w-auto">
+              <input 
+                type="date" 
+                value={customStartDate}
+                onChange={e => setCustomStartDate(e.target.value)}
+                className="bg-white border border-slate-200 text-sm rounded-xl px-3 py-2.5 outline-none focus:ring-2 focus:ring-primary/20 shadow-sm flex-1 sm:flex-none" 
+              />
+              <span className="self-center text-slate-500 text-sm">até</span>
+              <input 
+                type="date" 
+                value={customEndDate}
+                onChange={e => setCustomEndDate(e.target.value)}
+                className="bg-white border border-slate-200 text-sm rounded-xl px-3 py-2.5 outline-none focus:ring-2 focus:ring-primary/20 shadow-sm flex-1 sm:flex-none" 
+              />
+            </div>
+          )}
+          <select 
+            value={dateFilter}
+            onChange={(e) => setDateFilter(e.target.value)}
+            className="flex-1 sm:flex-none bg-white border border-slate-200 text-sm rounded-xl px-4 py-2.5 outline-none focus:ring-2 focus:ring-primary/20 shadow-sm cursor-pointer"
+          >
+            <option value="today">Hoje</option>
+            <option value="7days">Últimos 7 dias</option>
+            <option value="30days">Últimos 30 dias</option>
+            <option value="this_month">Este mês</option>
+            <option value="custom">Personalizado</option>
           </select>
         </div>
       </div>
@@ -135,29 +252,29 @@ export default function Dashboard() {
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 sm:gap-6">
         <StatCard 
           title="Total de Entregas" 
-          value="157.325" 
+          value={totalDeliveries.toString()} 
           icon={Package} 
-          trend="+12.5%" 
-          trendLabel="vs semana anterior"
+          trend="" 
+          trendLabel="Base Histórica"
           gradientClass="bg-gradient-to-br from-[var(--color-brand-cyan)] to-[var(--color-brand-blue)]"
         />
         <StatCard 
           title="Taxa de Sucesso (SLA)" 
-          value="98.2%" 
+          value={`${slaPercentage}%`} 
           icon={CheckCircle} 
-          trend="+0.8%" 
-          trendLabel="vs semana anterior"
+          trend="" 
+          trendLabel="Média global"
         />
         <StatCard 
           title="Entregadores Ativos" 
-          value="2.450" 
+          value={activeDriversCount.toString()} 
           icon={Users} 
-          trend="+156" 
-          trendLabel="novos cadastros"
+          trend="" 
+          trendLabel="Online / Em rota"
         />
         <StatCard 
           title="Rotas em Andamento" 
-          value="482" 
+          value={activeRoutesCount.toString()} 
           icon={MapPin} 
         />
       </div>
@@ -168,7 +285,7 @@ export default function Dashboard() {
           <h3 className="text-lg font-semibold text-slate-800 mb-6">Histórico de Ordens de Serviço</h3>
           <div className="h-72 w-full flex-1 min-h-[300px]">
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={deliveryData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+              <AreaChart data={dynamicDeliveryData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                 <defs>
                   <linearGradient id="colorSuccess" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%" stopColor="var(--color-brand-blue)" stopOpacity={0.3}/>
@@ -190,19 +307,19 @@ export default function Dashboard() {
 
         {/* Status Breakdown */}
         <div className="bg-white p-5 sm:p-6 rounded-2xl border border-slate-200 shadow-sm xl:col-span-1 flex flex-col">
-          <h3 className="text-lg font-semibold text-slate-800 mb-6">Status das Entregas (Hoje)</h3>
+          <h3 className="text-lg font-semibold text-slate-800 mb-6">Status das Entregas (Período Selecionado)</h3>
           <div className="h-48 mb-6 relative">
              <ResponsiveContainer width="100%" height="100%">
               <PieChart>
                 <Pie
-                  data={statusData}
+                  data={dynamicStatusData}
                   innerRadius={65}
                   outerRadius={85}
                   paddingAngle={5}
                   dataKey="value"
                   stroke="none"
                 >
-                  {statusData.map((entry, index) => (
+                  {dynamicStatusData.map((entry, index) => (
                     <Cell key={`cell-${index}`} fill={entry.color} />
                   ))}
                 </Pie>
@@ -212,18 +329,18 @@ export default function Dashboard() {
               </PieChart>
             </ResponsiveContainer>
             <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-              <span className="text-2xl font-bold text-slate-800">14k</span>
+              <span className="text-2xl font-bold text-slate-800">{totalStops}</span>
               <span className="text-xs text-slate-500">Pedidos</span>
             </div>
           </div>
           <div className="space-y-4 mt-auto">
-            {statusData.map(item => (
+            {dynamicStatusData.map(item => (
               <div key={item.name} className="flex justify-between items-center text-sm">
                 <div className="flex items-center gap-2.5">
                   <div className="w-3 h-3 rounded-full shadow-inner" style={{ backgroundColor: item.color }}></div>
                   <span className="text-slate-600 font-medium">{item.name}</span>
                 </div>
-                <span className="font-bold text-slate-800">{item.value}%</span>
+                <span className="font-bold text-slate-800">{item.name === 'Sem dados no período' ? '-' : `${((item.value / Math.max(totalStops, 1)) * 100).toFixed(1)}%`}</span>
               </div>
             ))}
           </div>
@@ -249,32 +366,25 @@ export default function Dashboard() {
               </tr>
             </thead>
             <tbody className="text-sm">
-              <tr className="border-b border-slate-50 hover:bg-slate-50 transition-colors">
-                <td className="py-4 font-mono text-slate-700">#7891070</td>
-                <td className="py-4 text-slate-700 font-medium">Edvaldo N.</td>
-                <td className="py-4">
-                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-red-50 text-red-700 font-medium text-xs">
-                    <AlertTriangle size={14} /> Cliente Ausente
-                  </span>
-                </td>
-                <td className="py-4 text-slate-500">14:22</td>
-                <td className="py-4 text-right">
-                  <button className="text-primary font-medium hover:text-primary-hover transition-colors">Ver Detalhes</button>
-                </td>
-              </tr>
-              <tr className="hover:bg-slate-50 transition-colors">
-                <td className="py-4 font-mono text-slate-700">#7892747</td>
-                <td className="py-4 text-slate-700 font-medium">Alexandre S.</td>
-                <td className="py-4">
-                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-amber-50 text-amber-700 font-medium text-xs">
-                    <Clock size={14} /> Atraso na Coleta
-                  </span>
-                </td>
-                <td className="py-4 text-slate-500">13:45</td>
-                <td className="py-4 text-right">
-                  <button className="text-primary font-medium hover:text-primary-hover transition-colors">Ver Detalhes</button>
-                </td>
-              </tr>
+              {activeAlerts.length > 0 ? activeAlerts.map((alert, idx) => (
+                <tr key={idx} className="border-b border-slate-50 hover:bg-slate-50 transition-colors">
+                  <td className="py-4 font-mono text-slate-700">#{alert.routeNumber || alert.routeId?.slice(0, 8)}</td>
+                  <td className="py-4 text-slate-700 font-medium">{alert.driverName || 'Não atribuído'}</td>
+                  <td className="py-4">
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-red-50 text-red-700 font-medium text-xs">
+                      <AlertTriangle size={14} /> Problema na Entrega
+                    </span>
+                  </td>
+                  <td className="py-4 text-slate-500">{alert.routeDate || 'Hoje'}</td>
+                  <td className="py-4 text-right">
+                    <button className="text-primary font-medium hover:text-primary-hover transition-colors">Ver Detalhes</button>
+                  </td>
+                </tr>
+              )) : (
+                <tr>
+                  <td colSpan={5} className="py-8 text-center text-slate-500">Nenhum alerta de rota no momento.</td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
@@ -284,8 +394,8 @@ export default function Dashboard() {
         <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6">
             <StatCard 
-              title="KM Rodado Hoje" 
-              value={`${totalKmToday} km`} 
+              title="KM Rodado no Período" 
+              value={`${totalKmPeriod} km`} 
               icon={Activity} 
               gradientClass="bg-gradient-to-br from-indigo-500 to-purple-500"
             />
@@ -304,7 +414,7 @@ export default function Dashboard() {
           </div>
 
           <div className="bg-white p-5 sm:p-6 rounded-2xl border border-slate-200 shadow-sm w-full">
-            <h3 className="text-lg font-semibold text-slate-800 mb-6">Diários de Bordo (Hoje)</h3>
+            <h3 className="text-lg font-semibold text-slate-800 mb-6">Diários de Bordo (Período Selecionado)</h3>
             <div className="overflow-x-auto -mx-5 sm:mx-0 px-5 sm:px-0">
               <table className="w-full text-left border-collapse min-w-[600px]">
                 <thead>
@@ -318,10 +428,10 @@ export default function Dashboard() {
                   </tr>
                 </thead>
                 <tbody className="text-sm">
-                  {todaysLogs.length === 0 ? (
-                    <tr><td colSpan={6} className="py-8 text-center text-slate-500">Nenhum diário registrado hoje.</td></tr>
+                  {periodLogs.length === 0 ? (
+                    <tr><td colSpan={6} className="py-8 text-center text-slate-500">Nenhum diário registrado no período.</td></tr>
                   ) : (
-                    todaysLogs.map(log => (
+                    periodLogs.map(log => (
                       <tr key={log.id} className="border-b border-slate-50 hover:bg-slate-50 transition-colors">
                         <td className="py-4 text-slate-700 font-medium">{log.driverName}</td>
                         <td className="py-4 font-mono text-slate-700">{log.vehiclePlate}</td>
@@ -372,7 +482,7 @@ export default function Dashboard() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {allStops.map((stop, index) => (
+                  {periodStops.map((stop, index) => (
                     <tr key={index} className="hover:bg-slate-50/50 transition-colors">
                       <td className="p-4 align-top">
                         <div className="font-medium text-slate-800">Rota #{stop.routeNumber}</div>

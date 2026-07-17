@@ -14,7 +14,7 @@ export default function RequestsPage() {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [isImporting, setIsImporting] = useState(false);
   const [importProgress, setImportProgress] = useState(0);
-  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+
   const [isModalOpen, setIsModalOpen] = useState(false);
   const geocodingLibrary = useMapsLibrary('geocoding');
 
@@ -297,22 +297,7 @@ export default function RequestsPage() {
               <div className="absolute bottom-0 left-0 h-1 bg-brand-cyan" style={{width: `${importProgress}%`}}></div>
             )}
           </label>
-          <div className="flex border border-slate-200 rounded-xl overflow-hidden shadow-sm bg-white ml-2">
-            <button 
-              onClick={() => setViewMode('grid')}
-              className={`p-2.5 transition-colors ${viewMode === 'grid' ? 'bg-slate-100 text-slate-800' : 'text-slate-400 hover:text-slate-600'}`}
-              title="Visão em Cards"
-            >
-              <LayoutGrid size={18} />
-            </button>
-            <button 
-              onClick={() => setViewMode('list')}
-              className={`p-2.5 transition-colors ${viewMode === 'list' ? 'bg-slate-100 text-slate-800' : 'text-slate-400 hover:text-slate-600'}`}
-              title="Visão em Lista"
-            >
-              <ListIcon size={18} />
-            </button>
-          </div>
+
         </div>
       </div>
 
@@ -376,93 +361,6 @@ export default function RequestsPage() {
                     <div className="h-px bg-slate-200 flex-1"></div>
                   </div>
 
-                  {viewMode === 'grid' ? (
-                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                      {groupedRequests[date].map(request => (
-                        <div 
-                          key={request.id} 
-                          className={`rounded-xl border p-5 shadow-sm hover:shadow-md transition-all flex flex-col cursor-pointer ${selectedIds.includes(request.id) ? 'border-primary bg-primary/5 ring-1 ring-primary' : 'border-slate-200 bg-white'}`}
-                          onClick={() => toggleSelection(request.id)}
-                        >
-                          <div className="flex justify-between items-start mb-4">
-                            <div className="flex items-center gap-2">
-                              <div className="mr-2" onClick={(e) => e.stopPropagation()}>
-                                <input 
-                                  type="checkbox" 
-                                  checked={selectedIds.includes(request.id)} 
-                                  onChange={() => toggleSelection(request.id)}
-                                  className="w-5 h-5 rounded border-slate-300 text-primary focus:ring-primary cursor-pointer"
-                                />
-                              </div>
-                              <div className={`p-2 rounded-lg ${request.type === 'coleta' ? 'bg-indigo-50 text-indigo-600' : 'bg-emerald-50 text-emerald-600'}`}>
-                                {request.type === 'coleta' ? <Package size={20} /> : <MapPin size={20} />}
-                              </div>
-                              <div>
-                                <span className="font-bold text-slate-800 capitalize">{request.type}</span>
-                                <div className="text-[10px] text-slate-400 flex items-center gap-1 mt-0.5">
-                                  <Clock size={10} />
-                                  {new Date(request.createdAt).toLocaleString('pt-BR')}
-                                </div>
-                              </div>
-                            </div>
-                            <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${
-                              request.status === 'pending' ? 'bg-amber-100 text-amber-700' : 
-                              request.status === 'on_route' ? 'bg-blue-100 text-blue-700' :
-                              'bg-emerald-100 text-emerald-700'
-                            }`}>
-                              {request.status === 'pending' ? 'Pendente' : request.status === 'on_route' ? 'Em Rota' : 'Concluído'}
-                            </span>
-                          </div>
-
-                          <div className="flex-1 space-y-3 text-sm">
-                            <div>
-                              <span className="text-slate-400 block text-xs">Endereço:</span>
-                              <span className="font-medium text-slate-700">{request.address}</span>
-                            </div>
-                            <div className="grid grid-cols-2 gap-2">
-                              <div>
-                                <span className="text-slate-400 block text-xs">Nº Pedido/OS:</span>
-                                <span className="font-medium text-slate-700">{request.orderNumber || request.osNumber || '-'}</span>
-                              </div>
-                              <div>
-                                <span className="text-slate-400 block text-xs">Telefone:</span>
-                                <span className="font-medium text-slate-700">{request.contactPhone || '-'}</span>
-                              </div>
-                            </div>
-                            <div>
-                              <span className="text-slate-400 block text-xs">Solicitante:</span>
-                              <span className="font-medium text-slate-700">{request.requesterName || '-'}</span>
-                            </div>
-                            {request.observations && (
-                              <div className="pt-2 border-t border-slate-100">
-                                <span className="text-slate-400 block text-xs">Observações:</span>
-                                <span className="text-slate-600 italic">{request.observations}</span>
-                              </div>
-                            )}
-                          </div>
-
-                          <div className="mt-5 pt-4 border-t border-slate-100 flex gap-2">
-                            {request.status === 'pending' && (
-                              <button 
-                                onClick={(e) => { e.stopPropagation(); handleMarkConverted(request.id); }}
-                                className="flex-1 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-semibold text-sm transition-colors flex items-center justify-center gap-2"
-                                title="Marcar manualmente como resolvido"
-                              >
-                                <CheckCircle size={16} /> Resolvido
-                              </button>
-                            )}
-                            <button 
-                              onClick={(e) => { e.stopPropagation(); handleDelete(request.id); }}
-                              className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
-                              title="Excluir"
-                            >
-                              <Trash2 size={18} />
-                            </button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
                     <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
                       <table className="w-full text-left text-sm">
                         <thead className="bg-slate-50 text-slate-500 border-b border-slate-200">
@@ -524,7 +422,6 @@ export default function RequestsPage() {
                         </tbody>
                       </table>
                     </div>
-                  )}
                 </div>
               ))}
             </div>
