@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useCollection } from '../lib/useCollection';
 import { ExternalRequest } from '../types';
-import { Package, MapPin, CheckCircle, Clock, Search, Trash2, Calendar, Upload, Download, Plus, LayoutGrid, List as ListIcon, X } from 'lucide-react';
+import { Package, MapPin, CheckCircle, Clock, Search, Trash2, Calendar, Upload, Download, Plus, LayoutGrid, List as ListIcon, X, Edit2 } from 'lucide-react';
 import { useMapsLibrary } from '@vis.gl/react-google-maps';
 import { addDoc, collection, doc, updateDoc, getDocs, query, where } from 'firebase/firestore';
 import { db } from '../lib/firebase';
@@ -21,6 +21,7 @@ export default function RequestsPage() {
   const [manualAssignRequest, setManualAssignRequest] = useState<ExternalRequest | null>(null);
   const [selectedAssignRouteId, setSelectedAssignRouteId] = useState<string>('');
   const [selectedAssignIndex, setSelectedAssignIndex] = useState<number>(-1);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const geocodingLibrary = useMapsLibrary('geocoding');
 
   // Manual form state
@@ -183,6 +184,25 @@ export default function RequestsPage() {
     reader.readAsText(file);
   };
 
+    reader.readAsText(file);
+  };
+
+  const handleEditClick = (e: React.MouseEvent, req: ExternalRequest) => {
+    e.stopPropagation();
+    setEditingId(req.id);
+    setManualForm({
+      type: req.type as 'coleta' | 'entrega',
+      address: req.address,
+      requesterName: req.requesterName || '',
+      contactPhone: req.contactPhone || '',
+      osNumber: req.osNumber || '',
+      orderNumber: req.orderNumber || '',
+      observations: req.observations || '',
+      scheduledDate: req.scheduledDate || ''
+    });
+    setIsModalOpen(true);
+  };
+
   const handleManualSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!manualForm.address) return;
@@ -203,16 +223,24 @@ export default function RequestsPage() {
       }
     }
 
-    await addDoc(collection(db, 'external_requests'), {
-      ...manualForm,
-      status: 'pending',
-      read: true,
-      createdAt: new Date().toISOString(),
-      lat,
-      lng
-    });
+    if (editingId) {
+      await update(editingId, {
+        ...manualForm,
+        ...(lat && lng ? { lat, lng } : {})
+      });
+    } else {
+      await addDoc(collection(db, 'external_requests'), {
+        ...manualForm,
+        status: 'pending',
+        read: true,
+        createdAt: new Date().toISOString(),
+        lat,
+        lng
+      });
+    }
 
     setIsModalOpen(false);
+    setEditingId(null);
     setManualForm({
       type: 'entrega',
       address: '',
@@ -635,8 +663,16 @@ export default function RequestsPage() {
                                     </button>
                                   )}
                                   <button 
+                                    onClick={(e) => handleEditClick(e, request)}
+                                    className="p-1.5 text-slate-400 hover:text-blue-500 hover:bg-blue-50 rounded-lg transition-colors"
+                                    title="Editar"
+                                  >
+                                    <Edit2 size={16} />
+                                  </button>
+                                  <button 
                                     onClick={(e) => { e.stopPropagation(); handleDelete(request.id); }}
                                     className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                                    title="Excluir"
                                   >
                                     <Trash2 size={16} />
                                   </button>
@@ -657,12 +693,12 @@ export default function RequestsPage() {
       {isModalOpen && (
         <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto animate-in zoom-in-95 duration-200">
-            <div className="sticky top-0 bg-white border-b border-slate-100 p-6 flex justify-between items-center z-10">
-              <h2 className="text-xl font-bold text-slate-800">Nova Demanda Manual</h2>
-              <button 
-                onClick={() => setIsModalOpen(false)}
-                className="p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600 rounded-xl transition-colors"
-              >
+            <div className="flex justify-between items-center p-4 sm:p-6 border-b border-slate-100 bg-slate-50">
+              <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+                <Plus className="text-brand-cyan" />
+                {editingId ? 'Editar Demanda' : 'Nova Demanda'}
+              </h2>
+              <button onClick={() => { setIsModalOpen(false); setEditingId(null); }} className="text-slate-400 hover:text-slate-600 transition-colors p-1 hover:bg-slate-200 rounded-lg">
                 <X size={20} />
               </button>
             </div>
@@ -768,16 +804,16 @@ export default function RequestsPage() {
               <div className="pt-4 border-t border-slate-100 flex justify-end gap-3">
                 <button 
                   type="button"
-                  onClick={() => setIsModalOpen(false)}
+                  onClick={() => { setIsModalOpen(false); setEditingId(null); }}
                   className="px-6 py-2.5 text-slate-600 font-medium hover:bg-slate-50 rounded-xl transition-colors"
                 >
                   Cancelar
                 </button>
                 <button 
                   type="submit"
-                  className="px-6 py-2.5 bg-brand-cyan text-white font-medium rounded-xl hover:bg-brand-blue transition-colors shadow-sm"
+                  className="px-6 py-2.5 bg-brand-cyan text-white rounded-xl font-semibold hover:bg-brand-blue transition-colors"
                 >
-                  Salvar Demanda
+                  {editingId ? 'Salvar Alterações' : 'Salvar Demanda'}
                 </button>
               </div>
             </form>
