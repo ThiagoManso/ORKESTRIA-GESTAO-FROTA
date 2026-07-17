@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
-import { Search, Star, User, Truck, ShieldCheck, Map, X } from 'lucide-react';
+import { Search, Star, User, Truck, ShieldCheck, Map, X, Trash2, PowerOff } from 'lucide-react';
 import { useCollection } from '../lib/useCollection';
-import { Vehicle } from '../types';
+import { Vehicle, RouteItem } from '../types';
 
 export default function DriversPage() {
-  const { data: drivers, loading, add, update } = useCollection<any>('drivers');
+  const { data: drivers, loading, add, update, remove } = useCollection<any>('drivers');
   const { data: vehicles } = useCollection<Vehicle>('vehicles');
+  const { data: routes } = useCollection<RouteItem>('routes');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const [selectedDriver, setSelectedDriver] = useState<any | null>(null);
@@ -142,6 +143,11 @@ export default function DriversPage() {
                     Aguardando Aprovação
                   </span>
                 )}
+                {driver.status === 'inactive' && (
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-red-50 text-red-700 text-xs font-semibold rounded-lg border border-red-100">
+                    Inativo
+                  </span>
+                )}
               </div>
               
               <div className="space-y-2.5 text-sm text-slate-600 mb-6 flex-1 bg-slate-50 p-3 rounded-xl border border-slate-100">
@@ -156,7 +162,7 @@ export default function DriversPage() {
 
               <div className="pt-4 border-t border-slate-100 flex justify-between items-center mt-auto">
                 <div className="text-xs text-slate-500">
-                  <span className="font-bold text-slate-800 text-sm">{driver.completed}</span> entregas
+                  <span className="font-bold text-slate-800 text-sm">{(routes?.filter(r => r.driver === driver.name && r.status === 'completed').length || 0)}</span> entregas
                 </div>
                 <button 
                   onClick={() => { setSelectedDriver(driver); setIsProfileModalOpen(true); }}
@@ -345,7 +351,7 @@ export default function DriversPage() {
                       <Star size={16} fill="currentColor" /> {selectedDriver.rating.toFixed(1)}
                     </div>
                     <span className="text-slate-300">•</span>
-                    <span className="text-sm font-medium text-slate-600">{selectedDriver.completed} entregas</span>
+                    <span className="text-sm font-medium text-slate-600">{(routes?.filter(r => r.driver === selectedDriver.name && r.status === 'completed').length || 0)} entregas</span>
                   </div>
                 </div>
               </div>
@@ -381,15 +387,16 @@ export default function DriversPage() {
                       <div className="font-semibold">
                         {selectedDriver.status === 'on_route' && <span className="text-blue-600">Em rota de entrega</span>}
                         {selectedDriver.status === 'active' && <span className="text-emerald-600">Disponível para rotas</span>}
-                        {selectedDriver.status === 'offline' && <span className="text-slate-600">Offline / Inativo</span>}
+                        {selectedDriver.status === 'offline' && <span className="text-slate-600">Offline</span>}
                         {selectedDriver.status === 'pending_approval' && <span className="text-amber-600">Aguardando Avaliação</span>}
+                        {selectedDriver.status === 'inactive' && <span className="text-red-600">Conta Inativa</span>}
                       </div>
                     </div>
                   </div>
                 </div>
               </div>
 
-              <div className="flex gap-3">
+              <div className="flex flex-col sm:flex-row gap-3 mt-4">
                 <button 
                   onClick={() => setIsProfileModalOpen(false)}
                   className="flex-1 px-4 py-2.5 bg-white border border-slate-200 text-slate-700 rounded-xl font-semibold hover:bg-slate-50 transition-colors shadow-sm"
@@ -407,9 +414,34 @@ export default function DriversPage() {
                     Aprovar Cadastro
                   </button>
                 ) : (
-                  <button className="flex-1 px-4 py-2.5 bg-slate-100 text-slate-700 rounded-xl font-semibold hover:bg-slate-200 transition-colors shadow-sm">
-                    Editar Cadastro
-                  </button>
+                  <>
+                    <button 
+                      onClick={async () => {
+                        const newStatus = selectedDriver.status === 'inactive' ? 'offline' : 'inactive';
+                        await update(selectedDriver.id, { status: newStatus });
+                        setIsProfileModalOpen(false);
+                      }}
+                      className={`flex-1 px-4 py-2.5 rounded-xl font-semibold transition-colors shadow-sm ${
+                        selectedDriver.status === 'inactive' 
+                        ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200' 
+                        : 'bg-amber-100 text-amber-700 hover:bg-amber-200'
+                      }`}
+                    >
+                      {selectedDriver.status === 'inactive' ? 'Reativar' : 'Inativar'}
+                    </button>
+                    <button 
+                      onClick={async () => {
+                        if (confirm('Tem certeza que deseja excluir este entregador?')) {
+                          await remove(selectedDriver.id);
+                          setIsProfileModalOpen(false);
+                        }
+                      }}
+                      className="flex-none px-4 py-2.5 bg-red-100 text-red-700 rounded-xl font-semibold hover:bg-red-200 transition-colors shadow-sm flex items-center justify-center"
+                      title="Excluir"
+                    >
+                      <Trash2 size={20} />
+                    </button>
+                  </>
                 )}
               </div>
             </div>
