@@ -18,6 +18,9 @@ export default function RequestsPage() {
   const [importProgress, setImportProgress] = useState(0);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [manualAssignRequest, setManualAssignRequest] = useState<ExternalRequest | null>(null);
+  const [selectedAssignRouteId, setSelectedAssignRouteId] = useState<string>('');
+  const [selectedAssignIndex, setSelectedAssignIndex] = useState<number>(-1);
   const geocodingLibrary = useMapsLibrary('geocoding');
 
   // Manual form state
@@ -250,6 +253,142 @@ export default function RequestsPage() {
     await update(id, { status: 'on_route' });
   };
 
+  const getDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
+    const R = 6371; // km
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+      Math.sin(dLon/2) * Math.sin(dLon/2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    return R * c;
+  };
+
+  const getSuggestionForRequest = (req: ExternalRequest) => {
+    if (!req.lat || !req.lng || !routes) return null;
+    if (req.status !== 'pending') return null;
+
+    let bestSuggestion: { routeId: string, routeName: string, distance: number, bestInsertIndex: number } | null = null;
+
+    routes.filter(r => r.status === 'in_progress' || r.status === 'pending').forEach(route => {
+      if (!route.stopDetails || route.stopDetails.length === 0) return;
+      
+      let isClose = false;
+      for (const stop of route.stopDetails) {
+        if (stop.lat && stop.lng) {
+          const dist = getDistance(req.lat!, req.lng!, stop.lat, stop.lng);
+          if (dist <= 5) { // 5km threshold
+            isClose = true;
+            break;
+          }
+        }
+      }
+
+      if (isClose) {
+        const firstPendingIndex = route.stopDetails.findIndex(s => s.status === 'pending');
+        const startIdx = firstPendingIndex === -1 ? route.stopDetails.length : firstPendingIndex;
+        
+        let minAdditionalDistance = Infinity;
+        let bestIdx = startIdx;
+        
+        for (let i = startIdx; i <= route.stopDetails.length; i++) {
+          const prev = i > 0 ? route.stopDetails[i - 1] : null;
+          const next = i < route.stopDetails.length ? route.stopDetails[i] : null;
+
+          let cost = 0;
+          const distToPrev = (prev && prev.lat && prev.lng) ? getDistance(prev.lat, prev.lng, req.lat!, req.lng!) : 0;
+          const distToNext = (next && next.lat && next.lng) ? getDistance(req.lat!, req.lng!, next.lat, next.lng) : 0;
+          const distPrevToNext = (prev && prev.lat && prev.lng && next && next.lat && next.lng) 
+            ? getDistance(prev.lat, prev.lng, next.lat, next.lng) : 0;
+
+          if (prev && next) {
+            cost = distToPrev + distToNext - distPrevToNext;
+          } else if (prev && !next) {
+            cost = distToPrev;
+          } else if (!prev && next) {
+            cost = distToNext;
+          }
+
+          if (cost < minAdditionalDistance) {
+            minAdditionalDistance = cost;
+            bestIdx = i;
+          }
+        }
+
+        let minDistanceToStop = Infinity;
+        route.stopDetails.forEach(s => {
+          if (s.lat && s.lng) {
+            const d = getDistance(req.lat!, req.lng!, s.lat, s.lng);
+            if (d < minDistanceToStop) minDistanceToStop = d;
+          }
+        });
+
+        if (!bestSuggestion || minDistanceToStop < bestSuggestion.distance) {
+          bestSuggestion = {
+            routeId: route.id,
+            routeName: route.routeNumber ? `Rota #${String(route.routeNumber).padStart(7, '0')}` : `Rota #${route.id.slice(0, 8).toUpperCase()}`,
+            distance: minDistanceToStop,
+            bestInsertIndex: bestIdx
+          };
+        }
+      }
+    });
+
+    return bestSuggestion;
+  };
+
+  const handleEncaixarRota = async (req: ExternalRequest, suggestion: any) => {
+    const routeRef = doc(db, 'routes', suggestion.routeId);
+    const route = routes?.find(r => r.id === suggestion.routeId);
+    if (!route) return;
+
+    try {
+      const newStopDetail = {
+        id: `stop-${Date.now()}`,
+        address: req.address,
+        status: 'pending' as 'pending',
+        externalRequestId: req.id,
+        customerName: req.requesterName || '',
+        customerPhone: req.contactPhone || '',
+        orderNumber: req.orderNumber || req.osNumber || '',
+        observation: req.observations || '',
+        lat: req.lat || null,
+        lng: req.lng || null
+      };
+
+      const newIntermediates = [...(route.intermediates || [])];
+      const newMeta = [...((route as any).intermediateMetadata || [])];
+      const newStopDetails = [...(route.stopDetails || [])];
+
+      const metaItem = {
+         address: req.address,
+         lat: req.lat || null,
+         lng: req.lng || null,
+         externalRequestId: req.id
+      };
+
+      const insertInterIdx = Math.min(suggestion.bestInsertIndex, newIntermediates.length);
+
+      newIntermediates.splice(insertInterIdx, 0, req.address);
+      newMeta.splice(insertInterIdx, 0, metaItem);
+      newStopDetails.splice(suggestion.bestInsertIndex, 0, newStopDetail);
+
+      await updateDoc(routeRef, {
+        intermediates: newIntermediates,
+        intermediateMetadata: newMeta,
+        stopDetails: newStopDetails,
+        stops: newStopDetails.length
+      });
+
+      await update(req.id, { status: 'on_route' });
+
+      alert(`Parada encaixada de forma otimizada na ${suggestion.routeName}!`);
+    } catch (err) {
+      console.error(err);
+      alert('Erro ao encaixar parada na rota.');
+    }
+  };
+
   const handleDesvincular = async (id: string) => {
     if (!window.confirm('Tem certeza que deseja desvincular esta demanda da rota e retornar para Pendente?')) return;
     
@@ -456,6 +595,36 @@ export default function RequestsPage() {
                               <td className="p-3 text-slate-600">{request.orderNumber || request.osNumber || '-'}</td>
                               <td className="p-3 text-center">
                                 <div className="flex items-center justify-center gap-2">
+                                  {(() => {
+                                    const suggestion = getSuggestionForRequest(request);
+                                    return (
+                                      <>
+                                        {suggestion && request.status === 'pending' && (
+                                          <button 
+                                            onClick={(e) => { e.stopPropagation(); handleEncaixarRota(request, suggestion); }}
+                                            className="flex items-center gap-1 px-2 py-1.5 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 rounded-lg text-[10px] font-semibold border border-indigo-200 transition-colors whitespace-nowrap"
+                                            title={`Encaixar na ${suggestion.routeName} (adiciona +${suggestion.distance.toFixed(1)}km)`}
+                                          >
+                                            <MapPin size={12} /> Sugestão ({suggestion.distance.toFixed(1)}km)
+                                          </button>
+                                        )}
+                                        {request.status === 'pending' && (
+                                          <button
+                                            onClick={(e) => {
+                                               e.stopPropagation();
+                                               setManualAssignRequest(request);
+                                               setSelectedAssignRouteId('');
+                                               setSelectedAssignIndex(-1);
+                                            }}
+                                            className="flex items-center gap-1 px-2 py-1.5 bg-slate-50 text-slate-600 hover:bg-slate-100 rounded-lg text-[10px] font-semibold border border-slate-200 transition-colors whitespace-nowrap"
+                                            title="Encaixe Manual em Rota Existente"
+                                          >
+                                            <ListIcon size={12} /> Manual
+                                          </button>
+                                        )}
+                                      </>
+                                    );
+                                  })()}
                                   {request.status === 'on_route' && (
                                     <button 
                                       onClick={(e) => { e.stopPropagation(); handleDesvincular(request.id); }}
@@ -612,6 +781,111 @@ export default function RequestsPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+      {manualAssignRequest && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl w-full max-w-lg overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="p-6 border-b border-slate-100 flex justify-between items-center">
+              <h2 className="text-xl font-bold text-slate-800">Encaixe Manual de Rota</h2>
+              <button 
+                onClick={() => setManualAssignRequest(null)}
+                className="p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600 rounded-xl transition-colors"
+              >
+                <X size={20} />
+              </button>
+            </div>
+            
+            <div className="p-6 space-y-6">
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-2">1. Selecione a Rota</label>
+                <select 
+                  value={selectedAssignRouteId}
+                  onChange={(e) => {
+                    setSelectedAssignRouteId(e.target.value);
+                    setSelectedAssignIndex(-1); // reset index
+                  }}
+                  className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:border-brand-cyan focus:ring-1 focus:ring-brand-cyan outline-none text-slate-700 font-medium"
+                >
+                  <option value="">Selecione uma rota ativa...</option>
+                  {routes?.filter(r => r.status === 'in_progress' || r.status === 'pending').map(r => {
+                    const rName = r.routeNumber ? `Rota #${String(r.routeNumber).padStart(7, '0')}` : `Rota #${r.id.slice(0, 8).toUpperCase()}`;
+                    return (
+                      <option key={r.id} value={r.id}>
+                        {rName} - Motorista: {r.driverName || 'Não atribuído'} ({r.stops} paradas)
+                      </option>
+                    );
+                  })}
+                </select>
+              </div>
+
+              {selectedAssignRouteId && (() => {
+                const route = routes?.find(r => r.id === selectedAssignRouteId);
+                if (!route || !route.stopDetails) return null;
+
+                const firstPendingIdx = route.stopDetails.findIndex(s => s.status === 'pending');
+                const startIdx = firstPendingIdx === -1 ? route.stopDetails.length : firstPendingIdx;
+
+                const bestSuggestion = getSuggestionForRequest(manualAssignRequest);
+                const optimalIdx = (bestSuggestion && bestSuggestion.routeId === selectedAssignRouteId) ? bestSuggestion.bestInsertIndex : -1;
+
+                const options = [];
+                for (let i = startIdx; i <= route.stopDetails.length; i++) {
+                   const isOptimal = i === optimalIdx;
+                   const labelBase = i === route.stopDetails.length 
+                     ? `Fim da Rota (Última parada)` 
+                     : `Posição ${i + 1} (Antes de: ${route.stopDetails[i].address.split(',')[0]})`;
+                   
+                   options.push({
+                     index: i,
+                     label: isOptimal ? `${labelBase} ⭐ Recomendado` : labelBase
+                   });
+                }
+
+                return (
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-700 mb-2">2. Posição de Encaixe</label>
+                    <select
+                      value={selectedAssignIndex}
+                      onChange={(e) => setSelectedAssignIndex(Number(e.target.value))}
+                      className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:border-brand-cyan focus:ring-1 focus:ring-brand-cyan outline-none text-slate-700 font-medium"
+                    >
+                      <option value={-1} disabled>Selecione a posição...</option>
+                      {options.map(opt => (
+                        <option key={opt.index} value={opt.index}>
+                          {opt.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                );
+              })()}
+
+            </div>
+
+            <div className="p-6 bg-slate-50 border-t border-slate-100 flex justify-end gap-3">
+              <button 
+                onClick={() => setManualAssignRequest(null)}
+                className="px-6 py-2.5 text-slate-600 font-medium hover:bg-slate-100 rounded-xl transition-colors"
+              >
+                Cancelar
+              </button>
+              <button 
+                disabled={!selectedAssignRouteId || selectedAssignIndex === -1}
+                onClick={() => {
+                   if(selectedAssignRouteId && selectedAssignIndex !== -1) {
+                      const route = routes?.find(r => r.id === selectedAssignRouteId);
+                      const rName = route?.routeNumber ? `Rota #${String(route.routeNumber).padStart(7, '0')}` : `Rota #${selectedAssignRouteId.slice(0, 8).toUpperCase()}`;
+                      handleEncaixarRota(manualAssignRequest, { routeId: selectedAssignRouteId, routeName: rName, bestInsertIndex: selectedAssignIndex });
+                      setManualAssignRequest(null);
+                   }
+                }}
+                className="px-6 py-2.5 bg-brand-cyan text-white font-medium rounded-xl hover:bg-brand-blue transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Confirmar Encaixe
+              </button>
+            </div>
           </div>
         </div>
       )}
