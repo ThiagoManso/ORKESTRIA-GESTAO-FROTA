@@ -44,6 +44,29 @@ export default function DriverViewPage({ driverId, driverName, driverStatus }: D
   const [isSubmittingIssue, setIsSubmittingIssue] = useState(false);
   const [summaryRoute, setSummaryRoute] = useState<RouteItem | null>(null);
   const [showEndOfDay, setShowEndOfDay] = useState(false);
+  
+  const [navTarget, setNavTarget] = useState<string | null>(null);
+
+  const handleNavigate = (address: string) => {
+    const pref = localStorage.getItem('navAppPref');
+    if (pref === 'waze') {
+      window.open(`https://waze.com/ul?q=${encodeURIComponent(address)}&navigate=yes`, '_blank');
+    } else if (pref === 'maps') {
+      window.open(`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(address)}`, '_blank');
+    } else {
+      setNavTarget(address);
+    }
+  };
+
+  const setNavPreferenceAndOpen = (app: 'waze' | 'maps', address: string) => {
+    localStorage.setItem('navAppPref', app);
+    if (app === 'waze') {
+      window.open(`https://waze.com/ul?q=${encodeURIComponent(address)}&navigate=yes`, '_blank');
+    } else {
+      window.open(`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(address)}`, '_blank');
+    }
+    setNavTarget(null);
+  };
 
   const playNotificationSound = () => {
     try {
@@ -491,6 +514,37 @@ export default function DriverViewPage({ driverId, driverName, driverStatus }: D
             </div>
           </div>
         )}
+
+        {/* Modal de Escolha de GPS */}
+        {navTarget && (
+          <div className="fixed inset-0 bg-slate-900/60 z-[80] flex items-end sm:items-center justify-center p-4 backdrop-blur-sm">
+            <div className="bg-white rounded-t-2xl sm:rounded-2xl w-full max-w-sm mx-auto shadow-2xl flex flex-col overflow-hidden animate-in slide-in-from-bottom-4 duration-300">
+              <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+                <h3 className="font-bold text-lg text-slate-800">Abrir Navegação</h3>
+                <button onClick={() => setNavTarget(null)} className="text-slate-400 p-1 rounded-lg hover:bg-slate-200">
+                  <X size={20} />
+                </button>
+              </div>
+              <div className="p-6 space-y-4">
+                <button 
+                  onClick={() => setNavPreferenceAndOpen('maps', navTarget)} 
+                  className="w-full flex items-center justify-center gap-3 py-4 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-xl font-bold transition-colors border border-blue-200"
+                >
+                  <Navigation size={22} /> Google Maps
+                </button>
+                <button 
+                  onClick={() => setNavPreferenceAndOpen('waze', navTarget)} 
+                  className="w-full flex items-center justify-center gap-3 py-4 bg-cyan-50 hover:bg-cyan-100 text-cyan-700 rounded-xl font-bold transition-colors border border-cyan-200"
+                >
+                  <Navigation size={22} /> Waze
+                </button>
+                <div className="text-center pt-2">
+                  <span className="text-xs text-slate-400">Sua escolha será salva como padrão.</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </>
     );
   };
@@ -507,14 +561,25 @@ export default function DriverViewPage({ driverId, driverName, driverStatus }: D
       <div className="flex flex-col min-h-screen bg-slate-50 font-sans pb-20">
         {renderModals()}
         <div className="bg-white shadow-sm p-4 sticky top-0 z-10 border-b border-slate-200">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-brand-cyan/10 rounded-full flex items-center justify-center text-brand-cyan">
-              <Truck size={24} />
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-brand-cyan/10 rounded-full flex items-center justify-center text-brand-cyan">
+                <Truck size={24} />
+              </div>
+              <div>
+                <h1 className="text-lg font-bold text-slate-800">Rota #{formatRouteId(activeRoute)}</h1>
+                <p className="text-sm text-slate-500 font-medium">Em andamento</p>
+              </div>
             </div>
-            <div>
-              <h1 className="text-lg font-bold text-slate-800">Rota #{formatRouteId(activeRoute)}</h1>
-              <p className="text-sm text-slate-500 font-medium">Em andamento</p>
-            </div>
+            
+            {localStorage.getItem('navAppPref') && (
+              <button 
+                onClick={() => { localStorage.removeItem('navAppPref'); alert('Sua preferência de GPS foi resetada.'); }}
+                className="text-[10px] sm:text-xs text-slate-400 font-medium hover:text-slate-600 underline"
+              >
+                Trocar GPS
+              </button>
+            )}
           </div>
           
           <div className="mt-4 flex gap-4 text-sm">
@@ -596,14 +661,12 @@ export default function DriverViewPage({ driverId, driverName, driverStatus }: D
                     
                     {!isCompleted && !isIssue && (
                       <div className="mt-4 flex flex-col gap-2">
-                        <a 
-                          href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(stop.address)}`} 
-                          target="_blank" 
-                          rel="noreferrer"
+                        <button 
+                          onClick={() => handleNavigate(stop.address)}
                           className="flex items-center justify-center gap-2 w-full py-3 bg-blue-50 text-blue-700 rounded-xl font-semibold active:scale-[0.98] transition-transform"
                         >
-                          <Navigation size={18} /> Navegar no Maps
-                        </a>
+                          <Navigation size={18} /> Navegar
+                        </button>
                         <div className="flex gap-2 mt-2">
                           <button 
                             onClick={() => handleCompleteStop(activeRoute, index)}
