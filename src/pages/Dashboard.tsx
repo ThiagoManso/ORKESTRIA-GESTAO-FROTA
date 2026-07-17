@@ -35,6 +35,7 @@ export default function Dashboard() {
   const { data: dailyLogs } = useCollection<DailyLog>('dailyLogs');
   const { data: routes } = useCollection<RouteItem>('routes');
   const { data: drivers } = useCollection<any>('drivers');
+  const { data: externalRequests } = useCollection<ExternalRequest>('external_requests');
 
   // Calculate KPIs
   const todayStr = new Date().toISOString().split('T')[0];
@@ -122,19 +123,43 @@ export default function Dashboard() {
   const avgKmPerVehicle = uniqueVehicles > 0 ? Math.round(totalKmAllTime / uniqueVehicles) : 0;
 
 
-  // Calculate Stops Data by Period
+  // Collect assigned request IDs to prevent double counting
+  const assignedRequestIds = new Set(
+    routes?.flatMap(r => r.stopDetails?.map(s => s.externalRequestId).filter(Boolean)) || []
+  );
+
+  // Calculate Stops Data by Period (from routes AND unassigned external requests)
   const allStopsRaw = routes?.flatMap(r => {
     if (!r.stopDetails) return [];
     return r.stopDetails.map(stop => ({
       ...stop,
       routeId: r.id,
-      routeNumber: r.routeNumber,
-      driverName: r.driver,
+      routeNumber: r.routeNumber?.toString() || '-',
+      driverName: r.driver || 'Sem Motorista',
       routeDate: r.date
     }));
   }) || [];
 
-  const periodStops = allStopsRaw.filter(s => {
+  const unassignedStops = externalRequests
+    ?.filter(req => req.status === 'pending' && !assignedRequestIds.has(req.id))
+    .map(req => ({
+      id: req.id,
+      address: req.address,
+      status: 'pending' as const,
+      orderNumber: req.orderNumber || req.osNumber,
+      customerName: req.requesterName,
+      customerPhone: req.contactPhone,
+      observation: req.observations,
+      routeId: '-',
+      routeNumber: '-',
+      driverName: 'Não Atribuído',
+      routeDate: req.scheduledDate || req.createdAt.split('T')[0],
+      externalRequestId: req.id
+    })) || [];
+
+  const combinedStops = [...allStopsRaw, ...unassignedStops];
+
+  const periodStops = combinedStops.filter(s => {
     const d = parseStrDate(s.routeDate);
     return d >= startDateObj && d <= endDateObj;
   });
@@ -485,8 +510,13 @@ export default function Dashboard() {
                   {periodStops.map((stop, index) => (
                     <tr key={index} className="hover:bg-slate-50/50 transition-colors">
                       <td className="p-4 align-top">
-                        <div className="font-medium text-slate-800">Rota #{stop.routeNumber}</div>
-                        <div className="text-xs text-slate-500">{stop.driverName} • {stop.routeDate}</div>
+                        <div className="font-medium text-slate-800">
+                          {stop.routeNumber !== '-' ? `Rota #${stop.routeNumber}` : 'Sem Rota'}
+                        </div>
+                        <div className="text-xs text-slate-500">
+                          {stop.driverName} 
+                          {stop.routeDate ? ` • ${stop.routeDate}` : ''}
+                        </div>
                       </td>
                       <td className="p-4 align-top">
                         <div className="text-sm text-slate-700 max-w-[250px] truncate" title={stop.address}>{stop.address}</div>
