@@ -350,6 +350,10 @@ export default function DriverViewPage({ driverId, driverName, driverStatus }: D
         ...(allCompleted ? { status: 'completed' } : {})
       });
       
+      if (newStopDetails[currentIssueStopIndex].externalRequestId) {
+        await updateExternalRequest(newStopDetails[currentIssueStopIndex].externalRequestId, { status: 'issue' }).catch(console.error);
+      }
+
       // Reset state
       setIsIssueModalOpen(false);
       setCurrentIssueStopIndex(null);

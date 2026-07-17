@@ -437,10 +437,13 @@ export default function RoutesPage() {
         id: existingStop ? existingStop.id : `stop-${index}`,
         address: item.addr,
         status: existingStop ? existingStop.status : ('pending' as const),
-        orderNumber: item.meta.orderNumber || '',
-        customerName: item.meta.customerName || '',
-        customerPhone: item.meta.customerPhone || '',
-        observation: item.meta.observation || '',
+        orderNumber: item.meta.orderNumber || existingStop?.orderNumber || '',
+        customerName: item.meta.customerName || existingStop?.customerName || '',
+        customerPhone: item.meta.customerPhone || existingStop?.customerPhone || '',
+        observation: item.meta.observation || existingStop?.observation || '',
+        externalRequestId: item.meta.externalRequestId || existingStop?.externalRequestId || '',
+        lat: item.meta.lat || existingStop?.lat || null,
+        lng: item.meta.lng || existingStop?.lng || null,
       };
     });
 
