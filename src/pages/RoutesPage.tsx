@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Filter, MapPin, Truck, CheckCircle, Clock, X, Map, RefreshCw, Trash2, Upload, Download, Package } from 'lucide-react';
+import { Search, Filter, MapPin, Truck, CheckCircle, Clock, X, Map, RefreshCw, Trash2, Upload, Download, Package, AlertTriangle } from 'lucide-react';
 import { RouteItem } from '../types';
 import { useMapsLibrary } from '@vis.gl/react-google-maps';
 import { useCollection } from '../lib/useCollection';
@@ -572,6 +572,83 @@ export default function RoutesPage() {
     }
   };
 
+  const handleManualCompleteStop = async (routeId: string, stopIndex: number) => {
+    const route = routes.find(r => r.id === routeId);
+    if (!route || !route.stopDetails) return;
+    
+    if (!window.confirm('Tem certeza que deseja marcar esta parada como Entregue manualmente?')) return;
+
+    try {
+      const newStopDetails = [...route.stopDetails];
+      newStopDetails[stopIndex] = { ...newStopDetails[stopIndex], status: 'completed' };
+      
+      const allCompleted = newStopDetails.every(s => s.status === 'completed' || s.status === 'issue');
+      
+      await update(route.id, { 
+        stopDetails: newStopDetails,
+        ...(allCompleted ? { status: 'completed' } : {})
+      });
+
+      if (newStopDetails[stopIndex].externalRequestId) {
+        const reqRef = doc(db, 'external_requests', newStopDetails[stopIndex].externalRequestId!);
+        await updateDoc(reqRef, { status: 'completed' });
+      }
+
+      if (selectedRoute?.id === route.id) {
+        setSelectedRoute(prev => prev ? {
+          ...prev,
+          stopDetails: newStopDetails,
+          ...(allCompleted ? { status: 'completed' } : {})
+        } : null);
+      }
+      alert('Parada marcada como entregue.');
+    } catch (err) {
+      console.error(err);
+      alert('Erro ao atualizar parada.');
+    }
+  };
+
+  const handleManualIssueStop = async (routeId: string, stopIndex: number) => {
+    const route = routes.find(r => r.id === routeId);
+    if (!route || !route.stopDetails) return;
+    
+    const reason = window.prompt('Qual o problema com esta entrega? (Opcional)');
+    if (reason === null) return;
+
+    try {
+      const newStopDetails = [...route.stopDetails];
+      newStopDetails[stopIndex] = { 
+        ...newStopDetails[stopIndex], 
+        status: 'issue',
+        issueDescription: reason ? `(Baixa manual ADM) ${reason}` : '(Baixa manual ADM)'
+      };
+      
+      const allCompleted = newStopDetails.every(s => s.status === 'completed' || s.status === 'issue');
+      
+      await update(route.id, { 
+        stopDetails: newStopDetails,
+        ...(allCompleted ? { status: 'completed' } : {})
+      });
+
+      if (newStopDetails[stopIndex].externalRequestId) {
+        const reqRef = doc(db, 'external_requests', newStopDetails[stopIndex].externalRequestId!);
+        await updateDoc(reqRef, { status: 'issue' });
+      }
+
+      if (selectedRoute?.id === route.id) {
+        setSelectedRoute(prev => prev ? {
+          ...prev,
+          stopDetails: newStopDetails,
+          ...(allCompleted ? { status: 'completed' } : {})
+        } : null);
+      }
+      alert('Parada marcada com problema.');
+    } catch (err) {
+      console.error(err);
+      alert('Erro ao atualizar parada.');
+    }
+  };
+
 
   const currentManageRoute = selectedRoute ? (routes.find(r => r.id === selectedRoute.id) || selectedRoute) : null;
 
@@ -1081,12 +1158,29 @@ export default function RoutesPage() {
                                 {stop.status === 'pending' && <span>Pendente</span>}
                               </div>
                               {stop.status === 'pending' && (
-                                <button
-                                  onClick={() => handleRemoveStopFromRoute(currentManageRoute.id, stop)}
-                                  className="text-xs text-red-500 hover:text-red-600 font-medium hover:underline px-2 py-1 bg-red-50 rounded-md transition-colors"
-                                >
-                                  Desvincular
-                                </button>
+                                <div className="flex flex-wrap gap-2 justify-end mt-2 sm:mt-0">
+                                  <button
+                                    onClick={() => handleManualCompleteStop(currentManageRoute.id, index)}
+                                    className="flex items-center gap-1.5 text-xs text-emerald-600 hover:text-emerald-700 font-medium px-2 py-1.5 bg-emerald-50 rounded-md transition-colors"
+                                    title="Dar baixa manual como entregue"
+                                  >
+                                    <CheckCircle size={14} /> Entregue
+                                  </button>
+                                  <button
+                                    onClick={() => handleManualIssueStop(currentManageRoute.id, index)}
+                                    className="flex items-center gap-1.5 text-xs text-amber-600 hover:text-amber-700 font-medium px-2 py-1.5 bg-amber-50 rounded-md transition-colors"
+                                    title="Reportar problema"
+                                  >
+                                    <AlertTriangle size={14} /> Problema
+                                  </button>
+                                  <button
+                                    onClick={() => handleRemoveStopFromRoute(currentManageRoute.id, stop)}
+                                    className="flex items-center gap-1.5 text-xs text-red-500 hover:text-red-600 font-medium px-2 py-1.5 bg-red-50 rounded-md transition-colors"
+                                    title="Remover da rota"
+                                  >
+                                    <X size={14} /> Desvincular
+                                  </button>
+                                </div>
                               )}
                             </div>
                             {stop.status === 'issue' && (stop.issueDescription || stop.issuePhotoUrl) && (

@@ -192,6 +192,45 @@ export default function DriverViewPage({ driverId, driverName, driverStatus }: D
     };
   }, [driverStatus, driverId]);
 
+  const wakeLockRef = React.useRef<any>(null);
+
+  useEffect(() => {
+    const requestWakeLock = async () => {
+      if ('wakeLock' in navigator) {
+        try {
+          wakeLockRef.current = await (navigator as any).wakeLock.request('screen');
+          console.log('Wake Lock ativo - Tela não vai apagar');
+        } catch (err) {
+          console.error(`Erro Wake Lock: ${err}`);
+        }
+      }
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && (driverStatus === 'active' || driverStatus === 'on_route')) {
+        requestWakeLock();
+      }
+    };
+
+    if (driverStatus === 'active' || driverStatus === 'on_route') {
+      requestWakeLock();
+      document.addEventListener('visibilitychange', handleVisibilityChange);
+    } else {
+      if (wakeLockRef.current !== null) {
+        wakeLockRef.current.release().catch(() => {});
+        wakeLockRef.current = null;
+      }
+    }
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      if (wakeLockRef.current !== null) {
+        wakeLockRef.current.release().catch(() => {});
+        wakeLockRef.current = null;
+      }
+    };
+  }, [driverStatus]);
+
   const enableNotifications = async () => {
     try {
       const permission = await Notification.requestPermission();
