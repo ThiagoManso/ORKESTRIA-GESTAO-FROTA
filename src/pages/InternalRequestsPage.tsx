@@ -194,7 +194,7 @@ export default function InternalRequestsPage({ currentUser }: InternalRequestsPa
                       {req.address}
                     </td>
                     <td className="py-4 px-6 text-sm text-slate-600">
-                      {req.scheduledDate.split('-').reverse().join('/')}
+                      {req.scheduledDate ? req.scheduledDate.split('-').reverse().join('/') : '-'}
                     </td>
                     <td className="py-4 px-6">
                       {getStatusBadge(req.status)}
