@@ -21,8 +21,42 @@ export default function MapPage() {
   const [selectedRoute, setSelectedRoute] = useState<RouteItem | null>(null);
   const [selectedDriver, setSelectedDriver] = useState<any | null>(null);
   const [filter, setFilter] = useState<FilterType>('all');
-  const [filterDate, setFilterDate] = useState<string>('');
+  const [dateFilterType, setDateFilterType] = useState<'today' | 'last7days' | 'month' | 'custom'>('today');
+  const [customDateStart, setCustomDateStart] = useState<string>('');
+  const [customDateEnd, setCustomDateEnd] = useState<string>('');
+  const [hoveredPinData, setHoveredPinData] = useState<any | null>(null);
   const [matrizLocation, setMatrizLocation] = useState<{lat: number, lng: number, address: string} | null>(null);
+
+  const isDateInRange = (dateStr: string) => {
+    if (!dateStr || dateStr === 'sem_data') return false;
+    
+    const today = new Date();
+    const targetDate = new Date(dateStr + 'T12:00:00');
+    if (isNaN(targetDate.getTime())) return false;
+    
+    if (dateFilterType === 'today') {
+      const todayStr = today.getFullYear() + '-' + String(today.getMonth() + 1).padStart(2, '0') + '-' + String(today.getDate()).padStart(2, '0');
+      return dateStr === todayStr;
+    }
+    if (dateFilterType === 'last7days') {
+      const sevenDaysAgo = new Date(today);
+      sevenDaysAgo.setDate(today.getDate() - 7);
+      sevenDaysAgo.setHours(0,0,0,0);
+      const endOfToday = new Date(today);
+      endOfToday.setHours(23,59,59,999);
+      return targetDate >= sevenDaysAgo && targetDate <= endOfToday;
+    }
+    if (dateFilterType === 'month') {
+      return targetDate.getMonth() === today.getMonth() && targetDate.getFullYear() === today.getFullYear();
+    }
+    if (dateFilterType === 'custom') {
+      if (!customDateStart && !customDateEnd) return true;
+      const start = customDateStart ? new Date(customDateStart + 'T00:00:00') : new Date(0);
+      const end = customDateEnd ? new Date(customDateEnd + 'T23:59:59') : new Date(8640000000000000);
+      return targetDate >= start && targetDate <= end;
+    }
+    return true;
+  };
 
 
   useEffect(() => {
@@ -53,8 +87,7 @@ export default function MapPage() {
             
             // Find all pending external requests inside the bounds
             const selected = externalRequests.filter(req => {
-              const matchesDate = !filterDate || req.scheduledDate === filterDate;
-              if (req.status === 'pending' && req.lat && req.lng && matchesDate) {
+              if (req.status === 'pending' && req.lat && req.lng && isDateInRange(req.scheduledDate)) {
                 const pt = new google.maps.LatLng(req.lat, req.lng);
                 return bounds.contains(pt);
               }
@@ -85,7 +118,7 @@ export default function MapPage() {
     return () => {
       if (drawingManager) drawingManager.setMap(null);
     };
-  }, [map, drawingLib, geometryLib, isSelectionMode, externalRequests, drawingManager, filterDate]);
+  }, [map, drawingLib, geometryLib, isSelectionMode, externalRequests, drawingManager, dateFilterType, customDateStart, customDateEnd]);
 
   useEffect(() => {
     const fetchSettings = async () => {
@@ -148,6 +181,28 @@ export default function MapPage() {
         </div>
         
         <div className="flex gap-2 items-center text-sm font-medium overflow-x-auto pb-1 sm:pb-0">
+          <div className="flex items-center gap-2 mr-2">
+            <Calendar size={16} className="text-slate-400" />
+            <select
+              value={dateFilterType}
+              onChange={(e) => setDateFilterType(e.target.value as any)}
+              className="bg-white border border-slate-300 text-slate-700 rounded-lg px-2 py-1.5 outline-none focus:border-brand-cyan focus:ring-1 focus:ring-brand-cyan text-sm"
+            >
+              <option value="today">Hoje</option>
+              <option value="last7days">Últimos 7 dias</option>
+              <option value="month">Este Mês</option>
+              <option value="custom">Personalizado</option>
+            </select>
+            {dateFilterType === 'custom' && (
+              <div className="flex items-center gap-1">
+                <input type="date" value={customDateStart} onChange={e => setCustomDateStart(e.target.value)} className="bg-white border border-slate-300 text-slate-700 rounded-lg px-2 py-1.5 outline-none text-sm" />
+                <span className="text-slate-400">-</span>
+                <input type="date" value={customDateEnd} onChange={e => setCustomDateEnd(e.target.value)} className="bg-white border border-slate-300 text-slate-700 rounded-lg px-2 py-1.5 outline-none text-sm" />
+              </div>
+            )}
+          </div>
+          <div className="w-px h-6 bg-slate-200 mx-1"></div>
+
           <button
             onClick={() => setIsSelectionMode(!isSelectionMode)}
             className={`flex items-center gap-2 px-3 py-1.5 rounded-full border transition-colors whitespace-nowrap ${isSelectionMode ? 'bg-blue-600 text-white border-blue-600 shadow-md' : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'}`}
@@ -210,7 +265,7 @@ export default function MapPage() {
           {/* External Requests (Pending) */}
           {(filter === 'all' || filter === 'unassigned') && externalRequests?.map((req) => {
             if (req.status !== 'pending' || !req.lat || !req.lng) return null;
-            if (filterDate && req.scheduledDate !== filterDate) return null;
+            if (!isDateInRange(req.scheduledDate)) return null;
             const isSelected = selectedRequestIds.includes(req.id);
             return (
               <AdvancedMarker
@@ -223,7 +278,17 @@ export default function MapPage() {
                 }}
                 zIndex={isSelected ? 100 : 10}
               >
-                <div className={`transition-transform ${isSelected ? 'scale-125' : 'hover:scale-110'}`}>
+                <div 
+                  className={`transition-transform ${isSelected ? 'scale-125' : 'hover:scale-110'}`}
+                  onMouseEnter={() => setHoveredPinData({
+                    type: req.type,
+                    status: req.status,
+                    address: req.address,
+                    customer: req.requesterName,
+                    order: req.orderNumber || req.osNumber,
+                  })}
+                  onMouseLeave={() => setHoveredPinData(null)}
+                >
                   <Pin background={isSelected ? '#2563eb' : '#f59e0b'} borderColor={isSelected ? '#1d4ed8' : '#d97706'} glyphColor="#fff" />
                   {isSelected && (
                     <div className="absolute -top-2 -right-2 bg-blue-600 text-white text-[10px] w-4 h-4 rounded-full flex items-center justify-center font-bold border border-white">✓</div>
@@ -236,7 +301,7 @@ export default function MapPage() {
           {/* Route Stops */}
           {routes?.map(route => {
             if (route.status === 'completed' && filter !== 'all' && filter !== 'completed') return null;
-            if (filterDate && route.date !== filterDate) return null;
+            if (!isDateInRange(route.date)) return null;
             
             return route.stopDetails?.map(stop => {
                if (!stop.lat || !stop.lng) return null;
@@ -264,7 +329,17 @@ export default function MapPage() {
                    position={{ lat: stop.lat, lng: stop.lng }}
                    zIndex={5}
                  >
-                   <div className="hover:scale-110 transition-transform">
+                   <div 
+                     className="hover:scale-110 transition-transform"
+                     onMouseEnter={() => setHoveredPinData({
+                        type: 'Parada de Rota',
+                        status: stop.status === 'completed' ? 'completed' : route.status === 'completed' ? 'completed' : 'assigned',
+                        address: stop.address,
+                        customer: stop.customerName,
+                        order: stop.orderNumber,
+                     })}
+                     onMouseLeave={() => setHoveredPinData(null)}
+                   >
                      <Pin background={color} borderColor={color} glyphColor="#fff" />
                    </div>
                  </AdvancedMarker>
@@ -295,6 +370,37 @@ export default function MapPage() {
               <Plus size={20} />
               Gerar Rota ({selectedRequestIds.length})
             </button>
+          </div>
+        )}
+
+        {hoveredPinData && (
+          <div className="absolute top-6 right-6 bg-white p-4 rounded-xl shadow-lg border border-slate-100 w-80 z-50 pointer-events-none animate-in fade-in slide-in-from-top-4">
+            <h3 className="font-bold text-slate-900 mb-2 border-b border-slate-100 pb-2">Detalhes da Parada</h3>
+            <p className="text-sm text-slate-600 mb-1">
+              <span className="font-semibold">Endereço:</span> {hoveredPinData.address}
+            </p>
+            {hoveredPinData.customer && (
+              <p className="text-sm text-slate-600 mb-1">
+                <span className="font-semibold">Cliente:</span> {hoveredPinData.customer}
+              </p>
+            )}
+            {hoveredPinData.order && (
+              <p className="text-sm text-slate-600 mb-1">
+                <span className="font-semibold">OS/Pedido:</span> {hoveredPinData.order}
+              </p>
+            )}
+            <p className="text-sm text-slate-600 mb-1">
+              <span className="font-semibold">Tipo:</span> <span className="capitalize">{hoveredPinData.type}</span>
+            </p>
+            <div className={`mt-3 inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold rounded-lg w-full justify-center ${
+              hoveredPinData.status === 'completed' ? 'bg-emerald-50 text-emerald-700' :
+              hoveredPinData.status === 'assigned' || hoveredPinData.status === 'on_route' ? 'bg-blue-50 text-blue-700' :
+              'bg-amber-50 text-amber-700'
+            }`}>
+              {hoveredPinData.status === 'completed' ? 'Concluído' :
+               hoveredPinData.status === 'assigned' || hoveredPinData.status === 'on_route' ? 'Em Rota' :
+               'Pendente'}
+            </div>
           </div>
         )}
 
