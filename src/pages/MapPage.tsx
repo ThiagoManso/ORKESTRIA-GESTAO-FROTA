@@ -30,13 +30,14 @@ export default function MapPage() {
   const isDateInRange = (dateStr: string) => {
     if (!dateStr || dateStr === 'sem_data') return false;
     
+    const normalizedDateStr = dateStr.split('T')[0];
     const today = new Date();
-    const targetDate = new Date(dateStr + 'T12:00:00');
+    const targetDate = new Date(normalizedDateStr + 'T12:00:00');
     if (isNaN(targetDate.getTime())) return false;
     
     if (dateFilterType === 'today') {
       const todayStr = today.getFullYear() + '-' + String(today.getMonth() + 1).padStart(2, '0') + '-' + String(today.getDate()).padStart(2, '0');
-      return dateStr === todayStr;
+      return normalizedDateStr === todayStr;
     }
     if (dateFilterType === 'last7days') {
       const sevenDaysAgo = new Date(today);
@@ -276,18 +277,18 @@ export default function MapPage() {
                     setSelectedRequestIds(prev => prev.includes(req.id) ? prev.filter(id => id !== req.id) : [...prev, req.id]);
                   }
                 }}
+                onMouseEnter={() => setHoveredPinData({
+                  type: req.type,
+                  status: req.status,
+                  address: req.address,
+                  customer: req.requesterName,
+                  order: req.orderNumber || req.osNumber,
+                })}
+                onMouseLeave={() => setHoveredPinData(null)}
                 zIndex={isSelected ? 100 : 10}
               >
                 <div 
-                  className={`transition-transform ${isSelected ? 'scale-125' : 'hover:scale-110'}`}
-                  onMouseEnter={() => setHoveredPinData({
-                    type: req.type,
-                    status: req.status,
-                    address: req.address,
-                    customer: req.requesterName,
-                    order: req.orderNumber || req.osNumber,
-                  })}
-                  onMouseLeave={() => setHoveredPinData(null)}
+                  className={`transition-transform ${isSelected ? 'scale-125' : 'hover:scale-110'} pointer-events-auto`}
                 >
                   <Pin background={isSelected ? '#2563eb' : '#f59e0b'} borderColor={isSelected ? '#1d4ed8' : '#d97706'} glyphColor="#fff" />
                   {isSelected && (
@@ -328,17 +329,17 @@ export default function MapPage() {
                    key={`stop-${route.id}-${stop.id}`}
                    position={{ lat: stop.lat, lng: stop.lng }}
                    zIndex={5}
+                   onMouseEnter={() => setHoveredPinData({
+                      type: 'Parada de Rota',
+                      status: stop.status === 'completed' ? 'completed' : route.status === 'completed' ? 'completed' : 'assigned',
+                      address: stop.address,
+                      customer: stop.customerName,
+                      order: stop.orderNumber,
+                   })}
+                   onMouseLeave={() => setHoveredPinData(null)}
                  >
                    <div 
-                     className="hover:scale-110 transition-transform"
-                     onMouseEnter={() => setHoveredPinData({
-                        type: 'Parada de Rota',
-                        status: stop.status === 'completed' ? 'completed' : route.status === 'completed' ? 'completed' : 'assigned',
-                        address: stop.address,
-                        customer: stop.customerName,
-                        order: stop.orderNumber,
-                     })}
-                     onMouseLeave={() => setHoveredPinData(null)}
+                     className="hover:scale-110 transition-transform pointer-events-auto"
                    >
                      <Pin background={color} borderColor={color} glyphColor="#fff" />
                    </div>
