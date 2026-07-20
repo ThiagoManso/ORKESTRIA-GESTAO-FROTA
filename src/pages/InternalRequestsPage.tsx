@@ -1,9 +1,8 @@
 import React, { useState } from 'react';
 import { Package, MapPin, FileText, Send, CheckCircle, Calendar, Plus, Clock, Check } from 'lucide-react';
 import { useMapsLibrary } from '@vis.gl/react-google-maps';
-import { collection, addDoc, query, where, orderBy } from 'firebase/firestore';
+import { collection, addDoc, query, where, onSnapshot } from 'firebase/firestore';
 import { db } from '../lib/firebase';
-import { useCollection } from '../lib/useCollection';
 import { ExternalRequest, SystemUser } from '../types';
 
 interface InternalRequestsPageProps {
@@ -15,14 +14,28 @@ export default function InternalRequestsPage({ currentUser }: InternalRequestsPa
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  
-  const { data: requests, loading } = useCollection<ExternalRequest>(
-    'external_requests',
-    query(
+  const [requests, setRequests] = useState<ExternalRequest[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!currentUser?.id) return;
+
+    const q = query(
       collection(db, 'external_requests'),
       where('userId', '==', currentUser.id)
-    )
-  );
+    );
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const docsData: ExternalRequest[] = [];
+      snapshot.forEach((doc) => {
+        docsData.push({ id: doc.id, ...doc.data() } as ExternalRequest);
+      });
+      setRequests(docsData);
+      setLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, [currentUser.id]);
 
   const sortedRequests = requests?.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
