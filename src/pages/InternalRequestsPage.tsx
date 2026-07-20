@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Package, MapPin, FileText, Send, CheckCircle, Calendar, Plus, Clock, Check } from 'lucide-react';
+import { Package, MapPin, FileText, Send, CheckCircle, Calendar, Plus, Clock, Check, Copy } from 'lucide-react';
 import { useMapsLibrary } from '@vis.gl/react-google-maps';
 import { collection, addDoc, query, where, onSnapshot } from 'firebase/firestore';
 import { db } from '../lib/firebase';
@@ -80,25 +80,40 @@ export default function InternalRequestsPage({ currentUser }: InternalRequestsPa
         createdAt: new Date().toISOString()
       });
       setIsSubmitted(true);
-      setTimeout(() => {
-        setIsModalOpen(false);
-        setIsSubmitted(false);
-        setRequestData({
-          type: 'coleta',
-          address: '',
-          observations: '',
-          osNumber: '',
-          orderNumber: '',
-          contactPhone: '',
-          scheduledDate: '',
-        });
-      }, 3000);
     } catch (error) {
       console.error("Error saving request: ", error);
       alert("Houve um erro ao enviar sua solicitação. Tente novamente.");
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  const handleCopyWhatsApp = () => {
+    const text = `*NOVO CHAMADO DE LOGÍSTICA* 🚛
+*Tipo:* ${requestData.type === 'coleta' ? 'Coleta' : 'Entrega'}
+*Referência:* ${requestData.type === 'coleta' ? requestData.osNumber : requestData.orderNumber}
+*Solicitante:* ${currentUser.name}
+*Telefone:* ${requestData.contactPhone || 'Não informado'}
+*Data Agendada:* ${requestData.scheduledDate.split('-').reverse().join('/')}
+*Endereço:* ${requestData.address}
+*Observações:* ${requestData.observations || 'Nenhuma'}`;
+    
+    navigator.clipboard.writeText(text);
+    alert('Informações copiadas! Agora é só colar no WhatsApp.');
+  };
+
+  const handleCloseModal = () => {
+    setIsModalOpen(false);
+    setIsSubmitted(false);
+    setRequestData({
+      type: 'coleta',
+      address: '',
+      observations: '',
+      osNumber: '',
+      orderNumber: '',
+      contactPhone: '',
+      scheduledDate: '',
+    });
   };
 
   const getStatusBadge = (status: string) => {
@@ -198,7 +213,22 @@ export default function InternalRequestsPage({ currentUser }: InternalRequestsPa
                   <CheckCircle size={40} />
                 </div>
                 <h2 className="text-2xl font-bold text-slate-800 mb-2">Solicitação Enviada!</h2>
-                <p className="text-slate-600">Sua solicitação foi registrada com sucesso.</p>
+                <p className="text-slate-600 mb-8">Sua solicitação foi registrada com sucesso.</p>
+                <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+                  <button 
+                    onClick={handleCopyWhatsApp}
+                    className="flex items-center justify-center gap-2 px-6 py-3 bg-[#25D366] hover:bg-[#128C7E] text-white font-bold rounded-xl transition-colors w-full sm:w-auto shadow-sm"
+                  >
+                    <Copy size={20} />
+                    Copiar para WhatsApp
+                  </button>
+                  <button 
+                    onClick={handleCloseModal}
+                    className="flex items-center justify-center px-6 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl transition-colors w-full sm:w-auto"
+                  >
+                    Fechar
+                  </button>
+                </div>
               </div>
             ) : (
               <>

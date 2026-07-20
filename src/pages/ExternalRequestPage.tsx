@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Package, MapPin, FileText, Send, CheckCircle, ArrowLeft, Calendar } from 'lucide-react';
+import { Package, MapPin, FileText, Send, CheckCircle, ArrowLeft, Calendar, Copy } from 'lucide-react';
 import { useMapsLibrary } from '@vis.gl/react-google-maps';
 import { collection, addDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
@@ -56,6 +56,20 @@ export default function ExternalRequestPage() {
     }
   };
 
+  const handleCopyWhatsApp = () => {
+    const text = `*NOVO CHAMADO DE LOGÍSTICA* 🚛
+*Tipo:* ${requestData.type === 'coleta' ? 'Coleta' : 'Entrega'}
+*Referência:* ${requestData.type === 'coleta' ? requestData.osNumber : requestData.orderNumber}
+*Solicitante:* ${requestData.requesterName || 'Não informado'}
+*Telefone:* ${requestData.contactPhone || 'Não informado'}
+*Data Agendada:* ${requestData.scheduledDate.split('-').reverse().join('/')}
+*Endereço:* ${requestData.address}
+*Observações:* ${requestData.observations || 'Nenhuma'}`;
+    
+    navigator.clipboard.writeText(text);
+    alert('Informações copiadas! Agora é só colar no WhatsApp.');
+  };
+
   if (isSubmitted) {
     return (
       <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-4">
@@ -67,24 +81,33 @@ export default function ExternalRequestPage() {
           <p className="text-slate-600 mb-8">
             Sua solicitação de {requestData.type} foi registrada com sucesso e enviada para a central de operações.
           </p>
-          <button 
-            onClick={() => {
-              setIsSubmitted(false);
-              setRequestData({
-                type: 'coleta',
-                address: '',
-                observations: '',
-                osNumber: '',
-                orderNumber: '',
-                requesterName: '',
-                contactPhone: '',
-                scheduledDate: '',
-              });
-            }}
-            className="w-full py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-xl transition-colors"
-          >
-            Fazer Nova Solicitação
-          </button>
+          <div className="flex flex-col gap-3">
+            <button 
+              onClick={handleCopyWhatsApp}
+              className="w-full py-3 bg-[#25D366] hover:bg-[#128C7E] text-white font-semibold rounded-xl transition-colors flex items-center justify-center gap-2 shadow-sm"
+            >
+              <Copy size={20} />
+              Copiar para WhatsApp
+            </button>
+            <button 
+              onClick={() => {
+                setIsSubmitted(false);
+                setRequestData({
+                  type: 'coleta',
+                  address: '',
+                  observations: '',
+                  osNumber: '',
+                  orderNumber: '',
+                  requesterName: '',
+                  contactPhone: '',
+                  scheduledDate: '',
+                });
+              }}
+              className="w-full py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-xl transition-colors"
+            >
+              Fazer Nova Solicitação
+            </button>
+          </div>
         </div>
       </div>
     );
