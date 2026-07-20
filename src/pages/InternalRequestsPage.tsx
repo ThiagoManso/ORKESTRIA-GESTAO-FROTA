@@ -1,6 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Package, MapPin, FileText, Send, CheckCircle, Calendar, Plus, Clock, Check, Copy } from 'lucide-react';
-import { useMapsLibrary } from '@vis.gl/react-google-maps';
 import { collection, addDoc, query, where, onSnapshot } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { ExternalRequest, SystemUser } from '../types';
@@ -10,15 +9,28 @@ interface InternalRequestsPageProps {
 }
 
 export default function InternalRequestsPage({ currentUser }: InternalRequestsPageProps) {
-  const geocodingLibrary = useMapsLibrary('geocoding');
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [isSubmitted, setIsSubmitted] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
   const [requests, setRequests] = useState<ExternalRequest[]>([]);
   const [loading, setLoading] = useState(true);
+  
+  // Modal states
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isSubmitted, setIsSubmitted] = useState(false);
 
+  // Form state
+  const [type, setType] = useState<'coleta' | 'entrega'>('coleta');
+  const [address, setAddress] = useState('');
+  const [observations, setObservations] = useState('');
+  const [reference, setReference] = useState(''); // OS or Order number
+  const [contactPhone, setContactPhone] = useState('');
+  const [scheduledDate, setScheduledDate] = useState('');
+
+  // Fetch user's requests
   useEffect(() => {
-    if (!currentUser?.id) return;
+    if (!currentUser || !currentUser.id) {
+      setLoading(false);
+      return;
+    }
 
     const q = query(
       collection(db, 'external_requests'),
@@ -26,139 +38,105 @@ export default function InternalRequestsPage({ currentUser }: InternalRequestsPa
     );
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const docsData: ExternalRequest[] = [];
+      const fetchedRequests: ExternalRequest[] = [];
       snapshot.forEach((doc) => {
-        docsData.push({ id: doc.id, ...doc.data() } as ExternalRequest);
+        fetchedRequests.push({ id: doc.id, ...doc.data() } as ExternalRequest);
       });
-      setRequests(docsData);
+      
+      // Sort newest first
+      fetchedRequests.sort((a, b) => {
+        const dateA = new Date(a.createdAt || 0).getTime();
+        const dateB = new Date(b.createdAt || 0).getTime();
+        return dateB - dateA; // Descending
+      });
+
+      setRequests(fetchedRequests);
+      setLoading(false);
+    }, (error) => {
+      console.error("Error fetching requests: ", error);
       setLoading(false);
     });
 
     return () => unsubscribe();
-  }, [currentUser.id]);
+  }, [currentUser]);
 
-  const getSafeDateMillis = (dateVal: any) => {
-    if (!dateVal) return 0;
-    if (typeof dateVal === 'object' && dateVal.toMillis) return dateVal.toMillis();
-    const d = new Date(dateVal);
-    return isNaN(d.getTime()) ? 0 : d.getTime();
+  const resetForm = () => {
+    setType('coleta');
+    setAddress('');
+    setObservations('');
+    setReference('');
+    setContactPhone('');
+    setScheduledDate('');
+    setIsSubmitted(false);
+    setIsModalOpen(false);
   };
-
-  const formatSafeDate = (dateVal: any) => {
-    if (!dateVal) return '-';
-    try {
-      let d;
-      if (typeof dateVal === 'object' && dateVal.toDate) {
-        d = dateVal.toDate();
-      } else {
-        d = new Date(dateVal);
-      }
-      return isNaN(d.getTime()) ? '-' : d.toLocaleDateString('pt-BR');
-    } catch (e) {
-      return '-';
-    }
-  };
-
-  const sortedRequests = [...(requests || [])].sort((a, b) => {
-    const timeA = getSafeDateMillis(a.createdAt);
-    const timeB = getSafeDateMillis(b.createdAt);
-    return timeB - timeA;
-  });
-
-  const [requestData, setRequestData] = useState({
-    type: 'coleta' as 'coleta' | 'entrega',
-    address: '',
-    observations: '',
-    osNumber: '', 
-    orderNumber: '', 
-    contactPhone: '',
-    scheduledDate: '',
-  });
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!reference || !address || !scheduledDate) {
+      alert("Por favor, preencha os campos obrigatórios.");
+      return;
+    }
+
     setIsSubmitting(true);
     try {
-      let lat = null;
-      let lng = null;
-      
-      if (geocodingLibrary && requestData.address) {
-        try {
-          const geocoder = new geocodingLibrary.Geocoder();
-          const response = await geocoder.geocode({ address: requestData.address });
-          if (response.results && response.results[0]) {
-            lat = response.results[0].geometry.location.lat();
-            lng = response.results[0].geometry.location.lng();
-          }
-        } catch (geocodeError) {
-          console.warn("Geocoding failed for address:", requestData.address, geocodeError);
-        }
-      }
-
-      await addDoc(collection(db, 'external_requests'), {
-        ...requestData,
+      const newRequest = {
+        type,
+        address,
+        observations,
+        osNumber: type === 'coleta' ? reference : '',
+        orderNumber: type === 'entrega' ? reference : '',
+        contactPhone,
+        scheduledDate,
         requesterName: currentUser.name,
-        userId: currentUser.id, // Linking to internal user
-        lat,
-        lng,
+        userId: currentUser.id,
         status: 'pending',
         read: false,
         createdAt: new Date().toISOString()
-      });
+      };
+
+      await addDoc(collection(db, 'external_requests'), newRequest);
       setIsSubmitted(true);
     } catch (error) {
-      console.error("Error saving request: ", error);
-      alert("Houve um erro ao enviar sua solicitação. Tente novamente.");
+      console.error("Erro ao salvar:", error);
+      alert("Houve um erro ao enviar sua solicitação.");
     } finally {
       setIsSubmitting(false);
     }
   };
 
   const handleCopyWhatsApp = () => {
-    const text = `*NOVO CHAMADO DE LOGÍSTICA* 🚛
-*Tipo:* ${requestData.type === 'coleta' ? 'Coleta' : 'Entrega'}
-*Referência:* ${requestData.type === 'coleta' ? requestData.osNumber : requestData.orderNumber}
-*Solicitante:* ${currentUser.name}
-*Telefone:* ${requestData.contactPhone || 'Não informado'}
-*Data Agendada:* ${requestData.scheduledDate.split('-').reverse().join('/')}
-*Endereço:* ${requestData.address}
-*Observações:* ${requestData.observations || 'Nenhuma'}`;
+    const formattedDate = scheduledDate.split('-').reverse().join('/');
+    const text = `*NOVO CHAMADO DE LOGÍSTICA* 🚛\n*Tipo:* ${type === 'coleta' ? 'Coleta' : 'Entrega'}\n*Referência:* ${reference}\n*Solicitante:* ${currentUser.name}\n*Telefone:* ${contactPhone || 'Não informado'}\n*Data Agendada:* ${formattedDate}\n*Endereço:* ${address}\n*Observações:* ${observations || 'Nenhuma'}`;
     
     navigator.clipboard.writeText(text);
-    alert('Informações copiadas! Agora é só colar no WhatsApp.');
+    alert('Texto copiado com sucesso! Agora é só colar no WhatsApp.');
   };
 
-  const handleCloseModal = () => {
-    setIsModalOpen(false);
-    setIsSubmitted(false);
-    setRequestData({
-      type: 'coleta',
-      address: '',
-      observations: '',
-      osNumber: '',
-      orderNumber: '',
-      contactPhone: '',
-      scheduledDate: '',
-    });
-  };
-
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case 'completed':
-        return <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700"><Check size={14} /> Concluído</span>;
-      case 'on_route':
-        return <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-700"><Clock size={14} /> Em Rota</span>;
-      default:
-        return <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-amber-100 text-amber-700"><Clock size={14} /> Pendente</span>;
+  const formatDate = (isoString?: string) => {
+    if (!isoString) return '-';
+    try {
+      return new Date(isoString).toLocaleDateString('pt-BR');
+    } catch {
+      return '-';
     }
   };
 
+  const formatScheduledDate = (dateStr?: string) => {
+    if (!dateStr) return '-';
+    if (dateStr.includes('-')) {
+      return dateStr.split('-').reverse().join('/');
+    }
+    return dateStr;
+  };
+
   return (
-    <div className="p-6 sm:p-8 max-w-7xl mx-auto space-y-8">
+    <div className="p-6 sm:p-8 max-w-7xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+      {/* Header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-800">Meus Chamados</h1>
-          <p className="text-slate-500 mt-1">Acompanhe suas solicitações de coleta e entrega.</p>
+          <p className="text-slate-500 mt-1">Acompanhe suas solicitações de logística.</p>
         </div>
         <button 
           onClick={() => setIsModalOpen(true)}
@@ -169,59 +147,56 @@ export default function InternalRequestsPage({ currentUser }: InternalRequestsPa
         </button>
       </div>
 
+      {/* Tabela */}
       <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
-              <tr className="bg-slate-50/50 border-b border-slate-200">
-                <th className="py-4 px-6 text-xs font-semibold text-slate-500 uppercase tracking-wider">Data do Pedido</th>
-                <th className="py-4 px-6 text-xs font-semibold text-slate-500 uppercase tracking-wider">Tipo</th>
-                <th className="py-4 px-6 text-xs font-semibold text-slate-500 uppercase tracking-wider">Referência</th>
-                <th className="py-4 px-6 text-xs font-semibold text-slate-500 uppercase tracking-wider">Endereço</th>
-                <th className="py-4 px-6 text-xs font-semibold text-slate-500 uppercase tracking-wider">Agendamento</th>
-                <th className="py-4 px-6 text-xs font-semibold text-slate-500 uppercase tracking-wider">Status</th>
+              <tr className="bg-slate-50 border-b border-slate-200 text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                <th className="py-4 px-6">Criado em</th>
+                <th className="py-4 px-6">Tipo</th>
+                <th className="py-4 px-6">Referência</th>
+                <th className="py-4 px-6">Endereço</th>
+                <th className="py-4 px-6">Agendado para</th>
+                <th className="py-4 px-6">Status</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="divide-y divide-slate-100 text-sm">
               {loading ? (
                 <tr>
-                  <td colSpan={6} className="py-8 text-center text-slate-500">
-                    <div className="w-6 h-6 border-2 border-brand-cyan border-t-transparent rounded-full animate-spin mx-auto"></div>
-                  </td>
+                  <td colSpan={6} className="py-8 text-center text-slate-500">Carregando seus chamados...</td>
                 </tr>
-              ) : !sortedRequests || sortedRequests.length === 0 ? (
+              ) : requests.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="py-12 text-center text-slate-500 flex flex-col items-center">
-                    <Package size={48} className="text-slate-300 mb-4" />
+                  <td colSpan={6} className="py-12 text-center text-slate-500">
+                    <Package size={48} className="text-slate-300 mb-4 mx-auto" />
                     <p className="text-lg font-medium text-slate-600">Nenhum chamado encontrado</p>
                     <p className="text-sm">Você ainda não fez nenhuma solicitação.</p>
                   </td>
                 </tr>
               ) : (
-                sortedRequests.map((req) => (
-                  <tr key={req.id} className="hover:bg-slate-50/50 transition-colors">
-                    <td className="py-4 px-6 text-sm text-slate-600">
-                      {formatSafeDate(req.createdAt)}
-                    </td>
+                requests.map((req) => (
+                  <tr key={req.id} className="hover:bg-slate-50 transition-colors">
+                    <td className="py-4 px-6 text-slate-600">{formatDate(req.createdAt)}</td>
                     <td className="py-4 px-6">
                       <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-slate-100 text-slate-700 capitalize">
-                        {req.type === 'coleta' ? <Package size={12} /> : <MapPin size={12} />}
+                        {req.type === 'coleta' ? <Package size={14} /> : <MapPin size={14} />}
                         {req.type}
                       </span>
                     </td>
-                    <td className="py-4 px-6 text-sm font-medium text-slate-700">
+                    <td className="py-4 px-6 font-medium text-slate-700">
                       {req.type === 'coleta' ? req.osNumber : req.orderNumber}
                     </td>
-                    <td className="py-4 px-6 text-sm text-slate-600 max-w-xs truncate" title={req.address}>
+                    <td className="py-4 px-6 text-slate-600 max-w-xs truncate" title={req.address}>
                       {req.address}
                     </td>
-                    <td className="py-4 px-6 text-sm text-slate-600">
-                      {typeof req.scheduledDate === 'string' && req.scheduledDate.includes('-') 
-                        ? req.scheduledDate.split('-').reverse().join('/') 
-                        : (req.scheduledDate || '-')}
+                    <td className="py-4 px-6 text-slate-600">
+                      {formatScheduledDate(req.scheduledDate)}
                     </td>
                     <td className="py-4 px-6">
-                      {getStatusBadge(req.status)}
+                      {req.status === 'completed' && <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700"><Check size={14} /> Concluído</span>}
+                      {req.status === 'on_route' && <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-700"><Clock size={14} /> Em Rota</span>}
+                      {(req.status === 'pending' || !req.status) && <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-amber-100 text-amber-700"><Clock size={14} /> Pendente</span>}
                     </td>
                   </tr>
                 ))
@@ -231,29 +206,22 @@ export default function InternalRequestsPage({ currentUser }: InternalRequestsPa
         </div>
       </div>
 
-      {/* Modal de Novo Chamado */}
+      {/* Modal Novo Chamado */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center p-4 z-50 overflow-y-auto">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl overflow-hidden my-8">
             {isSubmitted ? (
-              <div className="p-12 text-center">
+              <div className="p-10 text-center">
                 <div className="w-20 h-20 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-6">
                   <CheckCircle size={40} />
                 </div>
                 <h2 className="text-2xl font-bold text-slate-800 mb-2">Solicitação Enviada!</h2>
-                <p className="text-slate-600 mb-8">Sua solicitação foi registrada com sucesso.</p>
+                <p className="text-slate-600 mb-8">Sua solicitação foi registrada com sucesso no sistema.</p>
                 <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-                  <button 
-                    onClick={handleCopyWhatsApp}
-                    className="flex items-center justify-center gap-2 px-6 py-3 bg-[#25D366] hover:bg-[#128C7E] text-white font-bold rounded-xl transition-colors w-full sm:w-auto shadow-sm"
-                  >
-                    <Copy size={20} />
-                    Copiar para WhatsApp
+                  <button onClick={handleCopyWhatsApp} className="flex items-center justify-center gap-2 px-6 py-3 bg-[#25D366] hover:bg-[#128C7E] text-white font-bold rounded-xl transition-colors w-full sm:w-auto shadow-sm">
+                    <Copy size={20} /> Copiar WhatsApp
                   </button>
-                  <button 
-                    onClick={handleCloseModal}
-                    className="flex items-center justify-center px-6 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl transition-colors w-full sm:w-auto"
-                  >
+                  <button onClick={resetForm} className="flex items-center justify-center px-6 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl transition-colors w-full sm:w-auto">
                     Fechar
                   </button>
                 </div>
@@ -265,158 +233,93 @@ export default function InternalRequestsPage({ currentUser }: InternalRequestsPa
                     <div className="p-2 bg-brand-cyan/10 text-brand-cyan rounded-lg">
                       <Package size={24} />
                     </div>
-                    <h2 className="text-xl font-bold text-slate-800">Nova Solicitação</h2>
+                    <h2 className="text-xl font-bold text-slate-800">Novo Chamado</h2>
                   </div>
-                  <button 
-                    onClick={() => setIsModalOpen(false)}
-                    className="p-2 text-slate-400 hover:bg-slate-200 rounded-full transition-colors"
-                  >
+                  <button onClick={resetForm} className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-200 rounded-full transition-colors">
                     <Plus size={24} className="rotate-45" />
                   </button>
                 </div>
 
                 <form onSubmit={handleSubmit} className="p-6 space-y-6">
-                  {/* Tipo */}
+                  {/* Seleção de Tipo */}
                   <div>
-                    <label className="block text-sm font-semibold text-slate-700 mb-3">Tipo de Solicitação</label>
+                    <label className="block text-sm font-semibold text-slate-700 mb-3">O que você precisa?</label>
                     <div className="grid grid-cols-2 gap-4">
-                      <label className={`cursor-pointer rounded-xl border-2 p-4 flex flex-col items-center text-center transition-all ${requestData.type === 'coleta' ? 'border-brand-cyan bg-cyan-50/30' : 'border-slate-200 hover:border-slate-300'}`}>
-                        <input 
-                          type="radio" 
-                          name="type" 
-                          value="coleta" 
-                          checked={requestData.type === 'coleta'}
-                          onChange={() => setRequestData({...requestData, type: 'coleta'})}
-                          className="sr-only"
-                        />
-                        <Package size={24} className={requestData.type === 'coleta' ? 'text-brand-cyan mb-2' : 'text-slate-400 mb-2'} />
-                        <span className={`font-semibold ${requestData.type === 'coleta' ? 'text-brand-cyan' : 'text-slate-600'}`}>Coleta</span>
+                      <label className={`cursor-pointer rounded-xl border-2 p-4 flex flex-col items-center text-center transition-all ${type === 'coleta' ? 'border-brand-cyan bg-cyan-50' : 'border-slate-200 hover:border-slate-300'}`}>
+                        <input type="radio" className="sr-only" checked={type === 'coleta'} onChange={() => setType('coleta')} />
+                        <Package size={24} className={type === 'coleta' ? 'text-brand-cyan mb-2' : 'text-slate-400 mb-2'} />
+                        <span className={`font-semibold ${type === 'coleta' ? 'text-brand-cyan' : 'text-slate-600'}`}>Preciso de Coleta</span>
                       </label>
-                      <label className={`cursor-pointer rounded-xl border-2 p-4 flex flex-col items-center text-center transition-all ${requestData.type === 'entrega' ? 'border-brand-cyan bg-cyan-50/30' : 'border-slate-200 hover:border-slate-300'}`}>
-                        <input 
-                          type="radio" 
-                          name="type" 
-                          value="entrega" 
-                          checked={requestData.type === 'entrega'}
-                          onChange={() => setRequestData({...requestData, type: 'entrega'})}
-                          className="sr-only"
-                        />
-                        <MapPin size={24} className={requestData.type === 'entrega' ? 'text-brand-cyan mb-2' : 'text-slate-400 mb-2'} />
-                        <span className={`font-semibold ${requestData.type === 'entrega' ? 'text-brand-cyan' : 'text-slate-600'}`}>Entrega</span>
+                      <label className={`cursor-pointer rounded-xl border-2 p-4 flex flex-col items-center text-center transition-all ${type === 'entrega' ? 'border-brand-cyan bg-cyan-50' : 'border-slate-200 hover:border-slate-300'}`}>
+                        <input type="radio" className="sr-only" checked={type === 'entrega'} onChange={() => setType('entrega')} />
+                        <MapPin size={24} className={type === 'entrega' ? 'text-brand-cyan mb-2' : 'text-slate-400 mb-2'} />
+                        <span className={`font-semibold ${type === 'entrega' ? 'text-brand-cyan' : 'text-slate-600'}`}>Preciso de Entrega</span>
                       </label>
                     </div>
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                    {/* Campos dinâmicos */}
-                    {requestData.type === 'coleta' ? (
-                      <div>
-                        <label className="block text-sm font-semibold text-slate-700 mb-1.5">
-                          OS / NF / Pedido <span className="text-red-500">*</span>
-                        </label>
-                        <input 
-                          type="text" 
-                          required
-                          value={requestData.osNumber}
-                          onChange={(e) => setRequestData({...requestData, osNumber: e.target.value})}
-                          className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:border-brand-cyan focus:ring-1 focus:ring-brand-cyan transition-all"
-                          placeholder="Ex: NF-12345"
-                        />
-                      </div>
-                    ) : (
-                      <div>
-                        <label className="block text-sm font-semibold text-slate-700 mb-1.5">
-                          Número do Pedido <span className="text-red-500">*</span>
-                        </label>
-                        <input 
-                          type="text" 
-                          required
-                          value={requestData.orderNumber}
-                          onChange={(e) => setRequestData({...requestData, orderNumber: e.target.value})}
-                          className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:border-brand-cyan focus:ring-1 focus:ring-brand-cyan transition-all"
-                          placeholder="Ex: PED-98765"
-                        />
-                      </div>
-                    )}
-
                     <div>
                       <label className="block text-sm font-semibold text-slate-700 mb-1.5">
-                        Data Agendada <span className="text-red-500">*</span>
+                        {type === 'coleta' ? 'OS / NF do material' : 'Número do Pedido'} <span className="text-red-500">*</span>
                       </label>
+                      <input 
+                        type="text" required value={reference} onChange={(e) => setReference(e.target.value)}
+                        className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:border-brand-cyan focus:ring-1 focus:ring-brand-cyan"
+                        placeholder="Ex: 12345"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-semibold text-slate-700 mb-1.5">Data Agendada <span className="text-red-500">*</span></label>
                       <div className="relative">
                         <Calendar className="absolute left-3 top-3.5 text-slate-400" size={18} />
                         <input 
-                          type="date" 
-                          required
-                          value={requestData.scheduledDate}
-                          onChange={(e) => setRequestData({...requestData, scheduledDate: e.target.value})}
-                          className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:border-brand-cyan focus:ring-1 focus:ring-brand-cyan transition-all"
+                          type="date" required value={scheduledDate} onChange={(e) => setScheduledDate(e.target.value)}
+                          className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:border-brand-cyan focus:ring-1 focus:ring-brand-cyan"
                         />
                       </div>
                     </div>
                   </div>
 
                   <div>
-                    <label className="block text-sm font-semibold text-slate-700 mb-1.5">
-                      Endereço Completo <span className="text-red-500">*</span>
-                    </label>
+                    <label className="block text-sm font-semibold text-slate-700 mb-1.5">Endereço Completo <span className="text-red-500">*</span></label>
                     <div className="relative">
                       <MapPin className="absolute left-3 top-3.5 text-slate-400" size={18} />
                       <input 
-                        type="text" 
-                        required
-                        value={requestData.address}
-                        onChange={(e) => setRequestData({...requestData, address: e.target.value})}
-                        className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:border-brand-cyan focus:ring-1 focus:ring-brand-cyan transition-all"
-                        placeholder="Rua, Número, Bairro, Cidade - Estado"
+                        type="text" required value={address} onChange={(e) => setAddress(e.target.value)}
+                        className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:border-brand-cyan focus:ring-1 focus:ring-brand-cyan"
+                        placeholder="Rua, Número, Bairro, Cidade"
                       />
                     </div>
                   </div>
 
                   <div>
-                    <label className="block text-sm font-semibold text-slate-700 mb-1.5">Telefone / WhatsApp para Contato</label>
+                    <label className="block text-sm font-semibold text-slate-700 mb-1.5">Telefone para Contato</label>
                     <input 
-                      type="text" 
-                      value={requestData.contactPhone}
-                      onChange={(e) => setRequestData({...requestData, contactPhone: e.target.value})}
-                      className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:border-brand-cyan focus:ring-1 focus:ring-brand-cyan transition-all"
+                      type="text" value={contactPhone} onChange={(e) => setContactPhone(e.target.value)}
+                      className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:border-brand-cyan focus:ring-1 focus:ring-brand-cyan"
                       placeholder="(00) 00000-0000"
                     />
                   </div>
 
                   <div>
-                    <label className="block text-sm font-semibold text-slate-700 mb-1.5">Observações</label>
+                    <label className="block text-sm font-semibold text-slate-700 mb-1.5">Observações Adicionais</label>
                     <div className="relative">
                       <FileText className="absolute left-3 top-3.5 text-slate-400" size={18} />
                       <textarea 
-                        rows={2}
-                        value={requestData.observations}
-                        onChange={(e) => setRequestData({...requestData, observations: e.target.value})}
-                        className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:border-brand-cyan focus:ring-1 focus:ring-brand-cyan transition-all resize-none"
-                        placeholder="Instruções adicionais..."
+                        rows={2} value={observations} onChange={(e) => setObservations(e.target.value)}
+                        className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:border-brand-cyan focus:ring-1 focus:ring-brand-cyan resize-none"
+                        placeholder="Instruções para o entregador..."
                       />
                     </div>
                   </div>
 
-                  <div className="pt-4 border-t border-slate-100 flex gap-3">
-                    <button 
-                      type="button"
-                      onClick={() => setIsModalOpen(false)}
-                      className="flex-1 px-4 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl transition-colors"
-                    >
+                  <div className="pt-4 flex gap-3">
+                    <button type="button" onClick={resetForm} className="flex-1 px-4 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl transition-colors">
                       Cancelar
                     </button>
-                    <button 
-                      type="submit"
-                      disabled={isSubmitting}
-                      className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-brand-cyan hover:bg-cyan-600 text-white font-bold rounded-xl transition-colors disabled:opacity-70"
-                    >
-                      {isSubmitting ? (
-                        <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                      ) : (
-                        <Send size={18} />
-                      )}
-                      Enviar
+                    <button type="submit" disabled={isSubmitting} className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-brand-cyan hover:bg-cyan-600 text-white font-bold rounded-xl transition-colors disabled:opacity-70">
+                      {isSubmitting ? 'Enviando...' : <><Send size={18} /> Enviar Chamado</>}
                     </button>
                   </div>
                 </form>
