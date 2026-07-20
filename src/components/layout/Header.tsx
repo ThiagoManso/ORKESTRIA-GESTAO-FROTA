@@ -2,14 +2,17 @@ import React, { useState } from 'react';
 import { Bell, Search, User, Menu, Share2, Check } from 'lucide-react';
 
 import { useCollection } from '../../lib/useCollection';
-import { ExternalRequest } from '../../types';
+import { auth } from '../../lib/firebase';
+import { signOut } from 'firebase/auth';
+import { ExternalRequest, SystemUser } from '../../types';
 
 interface HeaderProps {
   onMenuClick: () => void;
   onNotificationClick?: () => void;
+  currentUser?: SystemUser | null;
 }
 
-export default function Header({ onMenuClick, onNotificationClick }: HeaderProps) {
+export default function Header({ onMenuClick, onNotificationClick, currentUser }: HeaderProps) {
   const [copied, setCopied] = useState(false);
   const { data: externalRequests } = useCollection<ExternalRequest>('external_requests');
   
@@ -77,11 +80,25 @@ export default function Header({ onMenuClick, onNotificationClick }: HeaderProps
         
         <div className="flex items-center gap-3 pl-4 sm:pl-6 border-l border-slate-200">
           <div className="hidden sm:flex flex-col text-right">
-            <span className="text-sm font-semibold text-slate-700">Administrador</span>
-            <span className="text-xs text-slate-500">Operações SP</span>
+            <span className="text-sm font-semibold text-slate-700">{currentUser?.name || 'Usuário'}</span>
+            <span className="text-xs text-slate-500">
+              {currentUser?.role === 'admin' ? 'Administrador' : currentUser?.sector || 'Colaborador'}
+            </span>
           </div>
-          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[var(--color-brand-cyan)] to-[var(--color-brand-blue)] flex items-center justify-center text-white shadow-sm ring-2 ring-white">
-            <User size={18} />
+          <div className="relative group">
+            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[var(--color-brand-cyan)] to-[var(--color-brand-blue)] flex items-center justify-center text-white shadow-sm ring-2 ring-white cursor-pointer">
+              <User size={18} />
+            </div>
+            
+            {/* Dropdown de logout */}
+            <div className="absolute right-0 mt-2 w-48 bg-white rounded-xl shadow-lg border border-slate-100 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all transform origin-top-right">
+              <button 
+                onClick={() => signOut(auth)}
+                className="w-full text-left px-4 py-3 text-sm text-red-600 font-medium hover:bg-red-50 rounded-xl transition-colors"
+              >
+                Sair do Sistema
+              </button>
+            </div>
           </div>
         </div>
       </div>

@@ -1,4 +1,4 @@
-export type ViewState = 'dashboard' | 'routes' | 'drivers' | 'financial' | 'issues' | 'map' | 'vehicles' | 'settings' | 'requests';
+export type ViewState = 'dashboard' | 'routes' | 'drivers' | 'financial' | 'issues' | 'map' | 'vehicles' | 'settings' | 'requests' | 'users' | 'my_requests';
 
 export interface ExternalRequest {
   id: string;
@@ -13,6 +13,17 @@ export interface ExternalRequest {
   status: 'pending' | 'on_route' | 'completed';
   read: boolean;
   createdAt: string;
+  userId?: string; // Links the request to an internal user
+}
+
+export interface SystemUser {
+  id: string;
+  name: string;
+  email: string;
+  sector: string;
+  status: 'pending_approval' | 'approved' | 'rejected';
+  role: 'admin' | 'internal_user';
+  permissions: ViewState[];
 }
 
 export interface RouteItem {

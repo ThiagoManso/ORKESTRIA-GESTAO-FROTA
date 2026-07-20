@@ -13,7 +13,10 @@ import IssuesPage from './pages/IssuesPage';
 import MapPage from './pages/MapPage';
 import SettingsPage from './pages/SettingsPage';
 import RequestsPage from './pages/RequestsPage';
-import { ViewState } from './types';
+import UsersPage from './pages/UsersPage';
+import InternalRequestsPage from './pages/InternalRequestsPage';
+import SystemAuthWrapper from './components/auth/SystemAuthWrapper';
+import { ViewState, SystemUser } from './types';
 
 const API_KEY =
   process.env.GOOGLE_MAPS_PLATFORM_KEY ||
@@ -25,6 +28,7 @@ const hasValidKey = Boolean(API_KEY) && API_KEY !== 'YOUR_API_KEY';
 export default function App() {
   const [isExternal, setIsExternal] = useState(false);
   const [isDriver, setIsDriver] = useState(false);
+  const [currentUser, setCurrentUser] = useState<SystemUser | null>(null);
   const [currentView, setCurrentView] = useState<ViewState>('dashboard');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
@@ -44,6 +48,18 @@ export default function App() {
     window.addEventListener('navigate', handleNavigate);
     return () => window.removeEventListener('navigate', handleNavigate);
   }, []);
+  
+  // Set default view based on user permissions when user logs in
+  useEffect(() => {
+    if (currentUser) {
+      if (!currentUser.permissions.includes(currentView)) {
+        // If current view is not allowed, switch to the first allowed view
+        if (currentUser.permissions.length > 0) {
+          setCurrentView(currentUser.permissions[0]);
+        }
+      }
+    }
+  }, [currentUser]);
 
   if (isExternal) {
     return (
@@ -77,6 +93,14 @@ export default function App() {
       </div>
     );
   }
+  
+  if (!currentUser) {
+    return (
+      <APIProvider apiKey={API_KEY} version="weekly">
+        <SystemAuthWrapper onAuthSuccess={setCurrentUser} />
+      </APIProvider>
+    );
+  }
 
   const renderContent = () => {
     switch (currentView) {
@@ -98,6 +122,10 @@ export default function App() {
         return <MapPage />;
       case 'settings':
         return <SettingsPage />;
+      case 'users':
+        return <UsersPage currentUser={currentUser} />;
+      case 'my_requests':
+        return <InternalRequestsPage currentUser={currentUser} />;
       default:
         return <Dashboard />;
     }
@@ -114,12 +142,14 @@ export default function App() {
           }}
           isOpen={isSidebarOpen}
           setIsOpen={setIsSidebarOpen}
+          currentUser={currentUser}
         />
         <div className="flex-1 flex flex-col min-w-0">
           <Header 
-          onMenuClick={() => setIsSidebarOpen(true)} 
-          onNotificationClick={() => handleViewChange('requests')}
-        />
+            onMenuClick={() => setIsSidebarOpen(true)} 
+            onNotificationClick={() => setCurrentView('requests')}
+            currentUser={currentUser}
+          />
           <main className="flex-1 overflow-y-auto">
             {renderContent()}
           </main>

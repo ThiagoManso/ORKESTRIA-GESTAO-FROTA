@@ -12,16 +12,17 @@ import {
   MapPin
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
-import { ViewState } from '../../types';
+import { ViewState, SystemUser } from '../../types';
 
 interface SidebarProps {
   currentView: ViewState;
   onViewChange: (view: ViewState) => void;
   isOpen: boolean;
   setIsOpen: (isOpen: boolean) => void;
+  currentUser?: SystemUser | null;
 }
 
-export default function Sidebar({ currentView, onViewChange, isOpen, setIsOpen }: SidebarProps) {
+export default function Sidebar({ currentView, onViewChange, isOpen, setIsOpen, currentUser }: SidebarProps) {
   const menuItems: { id: ViewState; label: string; icon: React.ElementType }[] = [
     { id: 'dashboard', label: 'Torre de Controle', icon: LayoutDashboard },
     { id: 'routes', label: 'Rotas', icon: Map },
@@ -31,7 +32,13 @@ export default function Sidebar({ currentView, onViewChange, isOpen, setIsOpen }
     { id: 'vehicles', label: 'Veículos', icon: Truck },
     { id: 'financial', label: 'Financeiro', icon: DollarSign },
     { id: 'issues', label: 'Acareação', icon: AlertCircle },
+    { id: 'my_requests', label: 'Meus Chamados', icon: Package },
+    { id: 'users', label: 'Usuários', icon: Users },
   ];
+  
+  const filteredMenuItems = menuItems.filter(item => 
+    !currentUser || currentUser.permissions.includes(item.id)
+  );
 
   return (
     <>
@@ -68,7 +75,7 @@ export default function Sidebar({ currentView, onViewChange, isOpen, setIsOpen }
           <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-4 px-2">
             Menu Principal
           </div>
-          {menuItems.map((item) => {
+          {filteredMenuItems.map((item) => {
             const Icon = item.icon;
             const isActive = currentView === item.id;
             return (
@@ -90,18 +97,20 @@ export default function Sidebar({ currentView, onViewChange, isOpen, setIsOpen }
         </div>
 
         <div className="p-4 border-t border-slate-100">
-          <button 
-            onClick={() => onViewChange('settings')}
-            className={cn(
-              "flex items-center gap-3 w-full px-3 py-3 rounded-xl transition-colors text-sm font-medium",
-              currentView === 'settings' 
-                ? "bg-primary/10 text-primary shadow-sm" 
-                : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
-            )}
-          >
-            <Settings size={18} className={currentView === 'settings' ? "text-primary" : "text-slate-400"} />
-            Configurações
-          </button>
+          {(!currentUser || currentUser.permissions.includes('settings')) && (
+            <button 
+              onClick={() => onViewChange('settings')}
+              className={cn(
+                "flex items-center gap-3 w-full px-3 py-3 rounded-xl transition-colors text-sm font-medium",
+                currentView === 'settings' 
+                  ? "bg-primary/10 text-primary shadow-sm" 
+                  : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+              )}
+            >
+              <Settings size={18} className={currentView === 'settings' ? "text-primary" : "text-slate-400"} />
+              Configurações
+            </button>
+          )}
         </div>
       </div>
     </>

@@ -30,7 +30,16 @@ export default function MapPage() {
   const isDateInRange = (dateStr: string) => {
     if (!dateStr || dateStr === 'sem_data') return false;
     
-    const normalizedDateStr = dateStr.split('T')[0];
+    let normalizedDateStr = dateStr;
+    if (dateStr.includes('/')) {
+      const parts = dateStr.split(' ')[0].split('/'); // Handle 'DD/MM/YYYY' or 'DD/MM/YYYY HH:mm'
+      if (parts.length === 3) {
+        normalizedDateStr = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+      }
+    } else {
+      normalizedDateStr = dateStr.split('T')[0];
+    }
+    
     const today = new Date();
     const targetDate = new Date(normalizedDateStr + 'T12:00:00');
     if (isNaN(targetDate.getTime())) return false;
@@ -310,10 +319,17 @@ export default function MapPage() {
                let show = false;
                let color = '#3b82f6'; // blue default
                
-               if (stop.status === 'completed' || route.status === 'completed') {
+               const category = getRouteCategory(route);
+               
+               if (stop.status === 'completed' || category === 'completed') {
                  if (filter === 'all' || filter === 'completed') {
                     show = true;
                     color = '#10b981'; // green
+                 }
+               } else if (category === 'unassigned') {
+                 if (filter === 'all' || filter === 'unassigned') {
+                    show = true;
+                    color = '#f59e0b'; // yellow/amber
                  }
                } else {
                  if (filter === 'all' || filter === 'assigned') {
