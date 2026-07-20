@@ -154,7 +154,7 @@ export default function Dashboard() {
       routeId: '-',
       routeNumber: '-',
       driverName: 'Não Atribuído',
-      routeDate: req.scheduledDate || req.createdAt.split('T')[0],
+      routeDate: req.scheduledDate || (typeof req.createdAt === 'string' ? req.createdAt.split('T')[0] : (req.createdAt && (req.createdAt as any).toDate ? (req.createdAt as any).toDate().toISOString().split('T')[0] : new Date().toISOString().split('T')[0])),
       externalRequestId: req.id
     })) || [];
 

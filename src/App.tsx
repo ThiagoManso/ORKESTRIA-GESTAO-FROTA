@@ -57,6 +57,8 @@ export default function App() {
         // If current view is not allowed, switch to the first allowed view
         if (userPermissions.length > 0) {
           setCurrentView(userPermissions[0]);
+        } else {
+          setCurrentView('my_requests');
         }
       }
     }
