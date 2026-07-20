@@ -37,7 +37,11 @@ export default function InternalRequestsPage({ currentUser }: InternalRequestsPa
     return () => unsubscribe();
   }, [currentUser.id]);
 
-  const sortedRequests = requests?.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  const sortedRequests = [...(requests || [])].sort((a, b) => {
+    const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+    const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+    return timeB - timeA;
+  });
 
   const [requestData, setRequestData] = useState({
     type: 'coleta' as 'coleta' | 'entrega',
@@ -175,7 +179,7 @@ export default function InternalRequestsPage({ currentUser }: InternalRequestsPa
                 sortedRequests.map((req) => (
                   <tr key={req.id} className="hover:bg-slate-50/50 transition-colors">
                     <td className="py-4 px-6 text-sm text-slate-600">
-                      {new Date(req.createdAt).toLocaleDateString('pt-BR')}
+                      {req.createdAt ? new Date(req.createdAt).toLocaleDateString('pt-BR') : '-'}
                     </td>
                     <td className="py-4 px-6">
                       <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-slate-100 text-slate-700 capitalize">
