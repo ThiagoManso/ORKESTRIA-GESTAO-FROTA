@@ -185,9 +185,6 @@ export default function RequestsPage() {
     reader.readAsText(file);
   };
 
-    reader.readAsText(file);
-  };
-
   const handleEditClick = (e: React.MouseEvent, req: ExternalRequest) => {
     e.stopPropagation();
     setEditingId(req.id);
