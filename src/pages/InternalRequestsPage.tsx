@@ -37,9 +37,31 @@ export default function InternalRequestsPage({ currentUser }: InternalRequestsPa
     return () => unsubscribe();
   }, [currentUser.id]);
 
+  const getSafeDateMillis = (dateVal: any) => {
+    if (!dateVal) return 0;
+    if (typeof dateVal === 'object' && dateVal.toMillis) return dateVal.toMillis();
+    const d = new Date(dateVal);
+    return isNaN(d.getTime()) ? 0 : d.getTime();
+  };
+
+  const formatSafeDate = (dateVal: any) => {
+    if (!dateVal) return '-';
+    try {
+      let d;
+      if (typeof dateVal === 'object' && dateVal.toDate) {
+        d = dateVal.toDate();
+      } else {
+        d = new Date(dateVal);
+      }
+      return isNaN(d.getTime()) ? '-' : d.toLocaleDateString('pt-BR');
+    } catch (e) {
+      return '-';
+    }
+  };
+
   const sortedRequests = [...(requests || [])].sort((a, b) => {
-    const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-    const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+    const timeA = getSafeDateMillis(a.createdAt);
+    const timeB = getSafeDateMillis(b.createdAt);
     return timeB - timeA;
   });
 
@@ -179,7 +201,7 @@ export default function InternalRequestsPage({ currentUser }: InternalRequestsPa
                 sortedRequests.map((req) => (
                   <tr key={req.id} className="hover:bg-slate-50/50 transition-colors">
                     <td className="py-4 px-6 text-sm text-slate-600">
-                      {req.createdAt ? new Date(req.createdAt).toLocaleDateString('pt-BR') : '-'}
+                      {formatSafeDate(req.createdAt)}
                     </td>
                     <td className="py-4 px-6">
                       <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-slate-100 text-slate-700 capitalize">
@@ -194,7 +216,9 @@ export default function InternalRequestsPage({ currentUser }: InternalRequestsPa
                       {req.address}
                     </td>
                     <td className="py-4 px-6 text-sm text-slate-600">
-                      {req.scheduledDate ? req.scheduledDate.split('-').reverse().join('/') : '-'}
+                      {typeof req.scheduledDate === 'string' && req.scheduledDate.includes('-') 
+                        ? req.scheduledDate.split('-').reverse().join('/') 
+                        : (req.scheduledDate || '-')}
                     </td>
                     <td className="py-4 px-6">
                       {getStatusBadge(req.status)}
