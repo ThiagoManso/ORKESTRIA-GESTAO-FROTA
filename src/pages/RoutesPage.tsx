@@ -32,8 +32,11 @@ export default function RoutesPage() {
   const { data: externalRequests, update: updateRequest } = useCollection<ExternalRequest>('external_requests');
   const [matrizAddress, setMatrizAddress] = useState<string>('');
 
+  const [stopTimeMinutes, setStopTimeMinutes] = useState<number>(30);
+  const [workdayTotalMinutes, setWorkdayTotalMinutes] = useState<number>(528); // Default 8h 48m
+
   useEffect(() => {
-    const fetchMatriz = async () => {
+    const fetchSettings = async () => {
       try {
         const docRef = doc(db, 'settings', 'matriz');
         const docSnap = await getDoc(docRef);
@@ -43,8 +46,44 @@ export default function RoutesPage() {
       } catch (error) {
         console.error("Error fetching matriz settings:", error);
       }
+      try {
+        const routingRef = doc(db, 'settings', 'routing');
+        const routingSnap = await getDoc(routingRef);
+        if (routingSnap.exists()) {
+          const rData = routingSnap.data();
+          if (rData.stopTimeMinutes !== undefined) {
+            setStopTimeMinutes(Number(rData.stopTimeMinutes));
+          }
+        }
+      } catch (error) {
+        console.error("Error fetching routing settings:", error);
+      }
+      try {
+        const workdayRef = doc(db, 'settings', 'workday');
+        const workdaySnap = await getDoc(workdayRef);
+        if (workdaySnap.exists()) {
+          const wData = workdaySnap.data();
+          let startM = 8 * 60;
+          let endM = 17 * 60 + 48;
+          let lunch = 60;
+          if (wData.start) {
+             const [h,m] = wData.start.split(':');
+             startM = parseInt(h) * 60 + parseInt(m);
+          }
+          if (wData.end) {
+             const [h,m] = wData.end.split(':');
+             endM = parseInt(h) * 60 + parseInt(m);
+          }
+          if (wData.lunchMinutes !== undefined) {
+             lunch = Number(wData.lunchMinutes);
+          }
+          setWorkdayTotalMinutes((endM - startM) - lunch);
+        }
+      } catch (error) {
+        console.error("Error fetching workday settings:", error);
+      }
     };
-    fetchMatriz();
+    fetchSettings();
   }, []);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -65,6 +104,7 @@ export default function RoutesPage() {
     stops: 1,
     distance: 0,
     estimatedTime: '',
+    estimatedMinutes: 0,
     returnToMatriz: false,
   });
   
@@ -116,6 +156,19 @@ export default function RoutesPage() {
 
   const routesLib = useMapsLibrary('routes');
 
+  const getDriverAvailability = (driverName: string, date: string) => {
+    if (!routes || !driverName || !date) return { minutesLeft: workdayTotalMinutes, formatted: '' };
+    const driverRoutes = routes.filter(r => r.driver === driverName && r.date === date && r.status !== 'issue');
+    const totalAssignedMinutes = driverRoutes.reduce((acc, route) => acc + (route.estimatedMinutes || 0), 0);
+    const minutesLeft = workdayTotalMinutes - totalAssignedMinutes;
+    
+    if (minutesLeft <= 0) return { minutesLeft, formatted: '0h 0m' };
+    
+    const h = Math.floor(minutesLeft / 60);
+    const m = minutesLeft % 60;
+    return { minutesLeft, formatted: `${h}h ${m}m` };
+  };
+
   const calculateRouteData = async (routeData: any) => {
     if (!routesLib || !routeData.origin || !routeData.destination) return { error: 'Preencha a origem e destino.' };
     try {
@@ -152,11 +205,17 @@ export default function RoutesPage() {
           totalDuration += leg.duration?.value || 0;
         });
 
+        // Add stop time for each intermediate stop (each stop takes stopTimeMinutes)
+        const numIntermediates = (routeData.intermediates || []).filter((addr: string) => addr.trim() !== '').length;
+        if (numIntermediates > 0) {
+           const additionalSeconds = numIntermediates * (stopTimeMinutes * 60);
+           totalDuration += additionalSeconds;
+        }
+
         const distanceKm = totalDistance / 1000;
         const hours = Math.floor(totalDuration / 3600);
         const minutes = Math.floor((totalDuration % 3600) / 60);
         const formattedTime = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')} h`;
-        
 
         let newIntermediates = routeData.intermediates || [];
         let newMetadata = routeData.intermediateMetadata || [];
@@ -195,6 +254,7 @@ export default function RoutesPage() {
           intermediateMetadata: newMetadata,
           distance: Number(distanceKm.toFixed(1)),
           estimatedTime: formattedTime,
+          estimatedMinutes: Math.ceil(totalDuration / 60),
           destinationLat,
           destinationLng
         };
@@ -300,6 +360,7 @@ export default function RoutesPage() {
     setIsCalculating(true);
     let finalDistance = newRoute.distance;
     let finalEstimatedTime = newRoute.estimatedTime || '00:00 h';
+    let finalEstimatedMinutes = (newRoute as any).estimatedMinutes || 0;
     let finalIntermediates = newRoute.intermediates;
     let finalMetadata = newRoute.intermediateMetadata || [];
     
@@ -308,6 +369,7 @@ export default function RoutesPage() {
       // Já foi calculado antes pelo botão de calcular, vamos economizar API!
       finalDistance = newRoute.distance;
       finalEstimatedTime = newRoute.estimatedTime || '00:00 h';
+      finalEstimatedMinutes = (newRoute as any).estimatedMinutes || 0;
       finalIntermediates = newRoute.intermediates;
       finalMetadata = newRoute.intermediateMetadata || [];
     } else if (routesLib && newRoute.origin && newRoute.destination) {
@@ -315,8 +377,8 @@ export default function RoutesPage() {
       if (data && !data.error) {
         finalDistance = data.distance;
         finalEstimatedTime = data.estimatedTime;
+        finalEstimatedMinutes = data.estimatedMinutes;
         finalIntermediates = data.intermediates;
-        finalMetadata = data.intermediateMetadata || [];
         finalMetadata = data.intermediateMetadata || [];
       } else {
         alert('Não foi possível calcular a rota com os endereços fornecidos. Erro: ' + (data?.error || ''));
@@ -331,7 +393,6 @@ export default function RoutesPage() {
       const d = new Date(newRoute.departureTime);
       formattedDate = d.toLocaleDateString('pt-BR');
     }
-
 
     const validIntermediates = finalIntermediates.map((addr, i) => ({ addr, meta: finalMetadata[i] || {} })).filter(item => item.addr.trim() !== '');
     const stopDetails = validIntermediates.map((item, index) => ({
@@ -357,7 +418,6 @@ export default function RoutesPage() {
        });
     }
 
-
     const nextRouteNumber = routes && routes.length > 0 
       ? Math.max(...routes.map(r => r.routeNumber || 0)) + 1 
       : 1;
@@ -369,6 +429,7 @@ export default function RoutesPage() {
       stops: newRoute.stops,
       distance: finalDistance,
       estimatedTime: finalEstimatedTime,
+      estimatedMinutes: finalEstimatedMinutes,
       date: formattedDate,
       departureTime: newRoute.departureTime,
       lat: -23.5505,
@@ -410,6 +471,7 @@ export default function RoutesPage() {
     setIsCalculating(true);
     let finalDistance = editingRoute.distance;
     let finalEstimatedTime = editingRoute.estimatedTime || '00:00 h';
+    let finalEstimatedMinutes = editingRoute.estimatedMinutes || 0;
     let finalIntermediates = editingRoute.intermediates;
     let finalMetadata = (editingRoute as any).intermediateMetadata || [];
     
@@ -418,6 +480,7 @@ export default function RoutesPage() {
       if (data) {
         finalDistance = data.distance;
         finalEstimatedTime = data.estimatedTime;
+        finalEstimatedMinutes = data.estimatedMinutes;
         finalIntermediates = data.intermediates;
       }
     }
@@ -462,6 +525,7 @@ export default function RoutesPage() {
       stops: updatedRoute.stops,
       distance: finalDistance,
       estimatedTime: finalEstimatedTime,
+      estimatedMinutes: finalEstimatedMinutes,
       date: updatedRoute.date,
       departureTime: updatedRoute.departureTime,
       origin: updatedRoute.origin,
@@ -771,10 +835,26 @@ export default function RoutesPage() {
                     className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:border-primary focus:ring-1 focus:ring-primary shadow-sm"
                   >
                     <option value="">Aguardando entregador...</option>
-                    {drivers?.filter((d: any) => d.status === 'active' || d.status === 'on_route').map((d: any) => (
-                      <option key={d.id} value={d.name}>{d.name}</option>
-                    ))}
+                    {drivers?.filter((d: any) => d.status === 'active' || d.status === 'on_route').map((d: any) => {
+                      const dateStr = newRoute.departureTime ? new Date(newRoute.departureTime).toLocaleDateString('pt-BR') : new Date().toLocaleDateString('pt-BR');
+                      const avail = getDriverAvailability(d.name, dateStr);
+                      return (
+                        <option key={d.id} value={d.name}>{d.name} (Livre: {avail.formatted})</option>
+                      );
+                    })}
                   </select>
+                  {newRoute.driver && (newRoute as any).estimatedMinutes > 0 && (() => {
+                    const dateStr = newRoute.departureTime ? new Date(newRoute.departureTime).toLocaleDateString('pt-BR') : new Date().toLocaleDateString('pt-BR');
+                    const avail = getDriverAvailability(newRoute.driver, dateStr);
+                    if (avail.minutesLeft < (newRoute as any).estimatedMinutes) {
+                      return (
+                        <p className="mt-1.5 text-xs font-semibold text-amber-600 bg-amber-50 p-2 rounded-lg border border-amber-200">
+                          Atenção: A rota ({newRoute.estimatedTime}) excede o tempo livre ({avail.formatted}) do motorista neste dia!
+                        </p>
+                      );
+                    }
+                    return null;
+                  })()}
                 </div>
                 
                 <div>
@@ -1275,10 +1355,34 @@ export default function RoutesPage() {
                     className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:border-primary focus:ring-1 focus:ring-primary shadow-sm"
                   >
                     <option value="Aguardando">Aguardando entregador...</option>
-                    {drivers?.filter((d: any) => d.status === 'active' || d.status === 'on_route').map((d: any) => (
-                      <option key={d.id} value={d.name}>{d.name}</option>
-                    ))}
+                    {drivers?.filter((d: any) => d.status === 'active' || d.status === 'on_route').map((d: any) => {
+                      const dateStr = editingRoute.departureTime ? new Date(editingRoute.departureTime).toLocaleDateString('pt-BR') : editingRoute.date;
+                      const avail = getDriverAvailability(d.name, dateStr);
+                      return (
+                        <option key={d.id} value={d.name}>{d.name} (Livre: {avail.formatted})</option>
+                      );
+                    })}
                   </select>
+                  {editingRoute.driver && editingRoute.driver !== 'Aguardando' && editingRoute.estimatedMinutes && editingRoute.estimatedMinutes > 0 && (() => {
+                    const dateStr = editingRoute.departureTime ? new Date(editingRoute.departureTime).toLocaleDateString('pt-BR') : editingRoute.date;
+                    const avail = getDriverAvailability(editingRoute.driver, dateStr);
+                    // Add back the time of the current route to available time, because this route is already assigned to them and is being edited.
+                    // Oh wait, if the driver is already assigned to this route, `avail.minutesLeft` already has this route's time subtracted (if it's in the DB).
+                    // Actually, if we are editing, we are editing in memory but it's already in the DB.
+                    // We should add back the original route time to avoid double subtraction.
+                    // I will just do a simple check for now, and if they change the driver, it's a new route for the new driver.
+                    const isSameDriver = (routes.find(r => r.id === editingRoute.id)?.driver === editingRoute.driver);
+                    const originalMins = isSameDriver ? (routes.find(r => r.id === editingRoute.id)?.estimatedMinutes || 0) : 0;
+                    
+                    if ((avail.minutesLeft + originalMins) < (editingRoute.estimatedMinutes || 0)) {
+                      return (
+                        <p className="mt-1.5 text-xs font-semibold text-amber-600 bg-amber-50 p-2 rounded-lg border border-amber-200">
+                          Atenção: A rota ({editingRoute.estimatedTime}) excede o tempo livre ({avail.formatted}) do motorista neste dia!
+                        </p>
+                      );
+                    }
+                    return null;
+                  })()}
                 </div>
                 
                 <div className="space-y-4">

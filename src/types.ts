@@ -35,6 +35,7 @@ export interface RouteItem {
   date: string;
   departureTime?: string;
   estimatedTime?: string;
+  estimatedMinutes?: number;
   origin?: string;
   destination?: string;
   intermediates?: string[];

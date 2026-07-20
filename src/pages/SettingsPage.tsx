@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Settings, Save, MapPin, Building, Loader2, AlertCircle } from 'lucide-react';
+import { Settings, Save, MapPin, Building, Loader2, AlertCircle, Clock } from 'lucide-react';
 import { useMapsLibrary } from '@vis.gl/react-google-maps';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
@@ -10,6 +10,18 @@ export default function SettingsPage() {
   const [lng, setLng] = useState('');
   const [isManual, setIsManual] = useState(false);
   
+  // Routing settings
+  const [stopTimeMinutes, setStopTimeMinutes] = useState('30');
+  const [isSavingRouting, setIsSavingRouting] = useState(false);
+  const [saveRoutingStatus, setSaveRoutingStatus] = useState<'idle' | 'success' | 'error'>('idle');
+
+  // Workday settings
+  const [workdayStart, setWorkdayStart] = useState('08:00');
+  const [workdayEnd, setWorkdayEnd] = useState('17:48');
+  const [lunchMinutes, setLunchMinutes] = useState('60');
+  const [isSavingWorkday, setIsSavingWorkday] = useState(false);
+  const [saveWorkdayStatus, setSaveWorkdayStatus] = useState<'idle' | 'success' | 'error'>('idle');
+
   const [isSaving, setIsSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'success' | 'error' | 'api_error'>('idle');
   const [errorMessage, setErrorMessage] = useState('');
@@ -18,6 +30,7 @@ export default function SettingsPage() {
 
   useEffect(() => {
     const fetchSettings = async () => {
+      // Matriz
       const docRef = doc(db, 'settings', 'matriz');
       const docSnap = await getDoc(docRef);
       if (docSnap.exists()) {
@@ -25,6 +38,26 @@ export default function SettingsPage() {
         setAddress(data.address || '');
         setLat(data.lat?.toString() || '');
         setLng(data.lng?.toString() || '');
+      }
+      
+      // Routing
+      const routingRef = doc(db, 'settings', 'routing');
+      const routingSnap = await getDoc(routingRef);
+      if (routingSnap.exists()) {
+        const rData = routingSnap.data();
+        if (rData.stopTimeMinutes !== undefined) {
+          setStopTimeMinutes(rData.stopTimeMinutes.toString());
+        }
+      }
+
+      // Workday
+      const workdayRef = doc(db, 'settings', 'workday');
+      const workdaySnap = await getDoc(workdayRef);
+      if (workdaySnap.exists()) {
+        const wData = workdaySnap.data();
+        if (wData.start) setWorkdayStart(wData.start);
+        if (wData.end) setWorkdayEnd(wData.end);
+        if (wData.lunchMinutes !== undefined) setLunchMinutes(wData.lunchMinutes.toString());
       }
     };
     fetchSettings();
@@ -109,8 +142,46 @@ export default function SettingsPage() {
     }
   };
 
+  const handleSaveRouting = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSavingRouting(true);
+    setSaveRoutingStatus('idle');
+    try {
+      await setDoc(doc(db, 'settings', 'routing'), {
+        stopTimeMinutes: Number(stopTimeMinutes) || 0
+      });
+      setSaveRoutingStatus('success');
+    } catch (err) {
+      console.error(err);
+      setSaveRoutingStatus('error');
+    } finally {
+      setIsSavingRouting(false);
+      setTimeout(() => setSaveRoutingStatus('idle'), 3000);
+    }
+  };
+
+  const handleSaveWorkday = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSavingWorkday(true);
+    setSaveWorkdayStatus('idle');
+    try {
+      await setDoc(doc(db, 'settings', 'workday'), {
+        start: workdayStart,
+        end: workdayEnd,
+        lunchMinutes: Number(lunchMinutes) || 0
+      });
+      setSaveWorkdayStatus('success');
+    } catch (err) {
+      console.error(err);
+      setSaveWorkdayStatus('error');
+    } finally {
+      setIsSavingWorkday(false);
+      setTimeout(() => setSaveWorkdayStatus('idle'), 3000);
+    }
+  };
+
   return (
-    <div className="p-4 sm:p-6 lg:p-8 w-full h-full flex flex-col animate-in fade-in slide-in-from-bottom-4 duration-500">
+    <div className="p-4 sm:p-6 lg:p-8 w-full h-full flex flex-col animate-in fade-in slide-in-from-bottom-4 duration-500 overflow-y-auto custom-scrollbar">
       <div className="mb-8">
         <h1 className="text-2xl font-bold text-slate-800 mb-1 flex items-center gap-2">
           <Settings className="text-slate-500" size={24} /> Configurações
@@ -118,13 +189,14 @@ export default function SettingsPage() {
         <p className="text-slate-500 text-sm sm:text-base">Gerencie as configurações do sistema e locais importantes.</p>
       </div>
 
-      <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden max-w-2xl">
-        <div className="p-6 border-b border-slate-100 flex items-center gap-3 bg-slate-50">
-          <div className="bg-primary/10 text-primary p-2 rounded-lg">
-            <Building size={20} />
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 max-w-6xl">
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+          <div className="p-6 border-b border-slate-100 flex items-center gap-3 bg-slate-50">
+            <div className="bg-primary/10 text-primary p-2 rounded-lg">
+              <Building size={20} />
+            </div>
+            <h2 className="text-lg font-bold text-slate-800">Localização da Matriz</h2>
           </div>
-          <h2 className="text-lg font-bold text-slate-800">Localização da Matriz</h2>
-        </div>
         
         <form onSubmit={handleSave} className="p-6 space-y-6">
           <p className="text-sm text-slate-600">
@@ -240,6 +312,126 @@ export default function SettingsPage() {
             </button>
           </div>
         </form>
+        </div>
+
+        {/* Routing Settings */}
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden h-fit">
+          <div className="p-6 border-b border-slate-100 flex items-center gap-3 bg-slate-50">
+            <div className="bg-brand-cyan/10 text-brand-cyan p-2 rounded-lg">
+              <Clock size={20} />
+            </div>
+            <h2 className="text-lg font-bold text-slate-800">Tempo de Parada</h2>
+          </div>
+          
+          <form onSubmit={handleSaveRouting} className="p-6 space-y-6">
+            <p className="text-sm text-slate-600">
+              Defina o tempo médio (em minutos) que o motorista leva em cada parada (descarregamento / entrega). 
+              Este tempo será adicionado automaticamente à duração total das rotas no momento da roteirização.
+            </p>
+
+            <div>
+              <label className="block text-sm font-semibold text-slate-700 mb-1.5">Tempo Médio por Parada (minutos) <span className="text-red-500">*</span></label>
+              <div className="relative">
+                <Clock className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                <input 
+                  type="number"
+                  min="0"
+                  step="1"
+                  required
+                  value={stopTimeMinutes}
+                  onChange={(e) => setStopTimeMinutes(e.target.value)}
+                  className="w-full pl-10 pr-4 py-3 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:border-brand-cyan focus:ring-1 focus:ring-brand-cyan shadow-sm transition-all"
+                  placeholder="Ex: 30"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between pt-4 border-t border-slate-100">
+              <div className="text-sm font-medium">
+                {saveRoutingStatus === 'success' && <span className="text-emerald-600">Configuração salva!</span>}
+                {saveRoutingStatus === 'error' && <span className="text-red-600">Erro ao salvar.</span>}
+              </div>
+              
+              <button 
+                type="submit"
+                disabled={isSavingRouting}
+                className="flex items-center gap-2 px-6 py-2.5 bg-gradient-to-r from-[var(--color-brand-cyan)] to-[var(--color-brand-blue)] text-white rounded-xl font-semibold hover:opacity-90 transition-opacity shadow-sm disabled:opacity-50"
+              >
+                {isSavingRouting ? <Loader2 className="animate-spin" size={18} /> : <Save size={18} />}
+                Salvar Tempo
+              </button>
+            </div>
+          </form>
+        </div>
+
+        {/* Workday Settings */}
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden h-fit">
+          <div className="p-6 border-b border-slate-100 flex items-center gap-3 bg-slate-50">
+            <div className="bg-amber-500/10 text-amber-600 p-2 rounded-lg">
+              <Clock size={20} />
+            </div>
+            <h2 className="text-lg font-bold text-slate-800">Jornada de Trabalho</h2>
+          </div>
+          
+          <form onSubmit={handleSaveWorkday} className="p-6 space-y-6">
+            <p className="text-sm text-slate-600">
+              Defina o horário comercial padrão e o tempo de pausa. O sistema utilizará esses dados para calcular se o motorista tem tempo hábil para realizar as rotas do dia.
+            </p>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-1.5">Início do Turno <span className="text-red-500">*</span></label>
+                <input 
+                  type="time"
+                  required
+                  value={workdayStart}
+                  onChange={(e) => setWorkdayStart(e.target.value)}
+                  className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 shadow-sm transition-all"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-1.5">Fim do Turno <span className="text-red-500">*</span></label>
+                <input 
+                  type="time"
+                  required
+                  value={workdayEnd}
+                  onChange={(e) => setWorkdayEnd(e.target.value)}
+                  className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 shadow-sm transition-all"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-semibold text-slate-700 mb-1.5">Pausa / Almoço (minutos) <span className="text-red-500">*</span></label>
+              <input 
+                type="number"
+                min="0"
+                step="1"
+                required
+                value={lunchMinutes}
+                onChange={(e) => setLunchMinutes(e.target.value)}
+                className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 shadow-sm transition-all"
+                placeholder="Ex: 60"
+              />
+            </div>
+
+            <div className="flex items-center justify-between pt-4 border-t border-slate-100">
+              <div className="text-sm font-medium">
+                {saveWorkdayStatus === 'success' && <span className="text-emerald-600">Jornada salva!</span>}
+                {saveWorkdayStatus === 'error' && <span className="text-red-600">Erro ao salvar.</span>}
+              </div>
+              
+              <button 
+                type="submit"
+                disabled={isSavingWorkday}
+                className="flex items-center gap-2 px-6 py-2.5 bg-gradient-to-r from-amber-500 to-orange-500 text-white rounded-xl font-semibold hover:opacity-90 transition-opacity shadow-sm disabled:opacity-50"
+              >
+                {isSavingWorkday ? <Loader2 className="animate-spin" size={18} /> : <Save size={18} />}
+                Salvar Jornada
+              </button>
+            </div>
+          </form>
+        </div>
       </div>
     </div>
   );
