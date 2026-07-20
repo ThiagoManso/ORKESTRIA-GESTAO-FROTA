@@ -109,6 +109,7 @@ export default function RoutesPage() {
   });
   
   const [isCalculating, setIsCalculating] = useState(false);
+  const [isFleetSaturated, setIsFleetSaturated] = useState(false);
 
   useEffect(() => {
     // Check if we arrived here from Map selection
@@ -342,11 +343,49 @@ export default function RoutesPage() {
 
   const calculateRoute = async () => {
     setIsCalculating(true);
+    setIsFleetSaturated(false); // Reset saturation flag before calculation
     const data = await calculateRouteData(newRoute);
     if (data && !data.error) {
+      let suggestedDriver = newRoute.driver;
+      let fleetSaturated = false;
+
+      // Only auto-suggest if a driver hasn't been manually picked or if the user wants auto-suggestion
+      // Let's always run the check. If the currently selected driver has enough time, we keep them.
+      // If not, we find the one with the most time.
+      const dateStr = newRoute.departureTime ? new Date(newRoute.departureTime).toLocaleDateString('pt-BR') : new Date().toLocaleDateString('pt-BR');
+      const activeDrivers = drivers?.filter((d: any) => d.status === 'active' || d.status === 'on_route') || [];
+      
+      let bestDriver = '';
+      let maxMinutesLeft = -1;
+      
+      let currentDriverHasTime = false;
+      
+      for (const d of activeDrivers) {
+        const avail = getDriverAvailability(d.name, dateStr);
+        if (d.name === suggestedDriver && avail.minutesLeft >= data.estimatedMinutes) {
+           currentDriverHasTime = true;
+        }
+        if (avail.minutesLeft > maxMinutesLeft) {
+          maxMinutesLeft = avail.minutesLeft;
+          bestDriver = d.name;
+        }
+      }
+
+      if (!currentDriverHasTime) {
+        if (maxMinutesLeft >= data.estimatedMinutes) {
+          suggestedDriver = bestDriver;
+        } else {
+          suggestedDriver = ''; // No one has time
+          fleetSaturated = true;
+        }
+      }
+
+      setIsFleetSaturated(fleetSaturated);
+
       setNewRoute(prev => ({
         ...prev,
-        ...data
+        ...data,
+        driver: suggestedDriver
       }));
     } else {
       alert('Não foi possível calcular a rota com os endereços fornecidos. Erro: ' + (data?.error || ''));
@@ -719,10 +758,31 @@ export default function RoutesPage() {
 
   const currentManageRoute = selectedRoute ? (routes.find(r => r.id === selectedRoute.id) || selectedRoute) : null;
 
+  const todayStr = new Date().toLocaleDateString('pt-BR');
+  const activeDriversStatus = (drivers?.filter((d: any) => d.status === 'active' || d.status === 'on_route') || []).map((d: any) => {
+    const avail = getDriverAvailability(d.name, todayStr);
+    const usedMinutes = workdayTotalMinutes - avail.minutesLeft;
+    const percent = Math.min(100, Math.max(0, (usedMinutes / workdayTotalMinutes) * 100));
+    
+    let colorClass = 'bg-emerald-500';
+    if (percent > 90) colorClass = 'bg-red-500';
+    else if (percent > 75) colorClass = 'bg-amber-500';
+    else if (percent > 50) colorClass = 'bg-blue-500';
+
+    return {
+      name: d.name,
+      usedMinutes,
+      minutesLeft: avail.minutesLeft,
+      formattedLeft: avail.formatted,
+      percent,
+      colorClass
+    };
+  });
+
   return (
     <div className="p-4 sm:p-6 lg:p-8 w-full h-full flex flex-col animate-in fade-in slide-in-from-bottom-4 duration-500">
       
-      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mb-8">
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mb-6">
         <div>
           <h1 className="text-2xl font-bold text-slate-800 mb-1">Rotas e Serviços</h1>
           <p className="text-slate-500 text-sm sm:text-base">Gerencie a expedição e o andamento das rotas.</p>
@@ -733,6 +793,30 @@ export default function RoutesPage() {
           </button>
         </div>
       </div>
+
+      {/* Driver Saturation Panel */}
+      {activeDriversStatus.length > 0 && (
+        <div className="mb-8">
+          <h2 className="text-sm font-semibold text-slate-600 mb-3 uppercase tracking-wider">Disponibilidade da Frota (Hoje)</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+            {activeDriversStatus.map((d, i) => (
+              <div key={i} className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm flex flex-col gap-2">
+                <div className="flex justify-between items-center text-sm">
+                  <span className="font-semibold text-slate-700 truncate" title={d.name}>{d.name}</span>
+                  <span className={`font-bold ${d.percent > 90 ? 'text-red-600' : 'text-slate-500'}`}>{d.formattedLeft}</span>
+                </div>
+                <div className="w-full bg-slate-100 rounded-full h-2.5 overflow-hidden">
+                  <div className={`h-2.5 rounded-full ${d.colorClass} transition-all duration-500`} style={{ width: `${d.percent}%` }}></div>
+                </div>
+                <div className="flex justify-between items-center text-xs text-slate-400 mt-1">
+                  <span>{d.percent.toFixed(0)}% ocupado</span>
+                  <span>Max: {Math.floor(workdayTotalMinutes/60)}h {workdayTotalMinutes%60}m</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm flex-1 flex flex-col overflow-hidden">
         <div className="p-4 sm:p-5 border-b border-slate-200 flex gap-4 bg-slate-50/50">
@@ -855,6 +939,24 @@ export default function RoutesPage() {
                     }
                     return null;
                   })()}
+                  {isFleetSaturated && !newRoute.driver && (
+                    <div className="mt-2 text-sm text-red-600 bg-red-50 p-3 rounded-xl border border-red-200 flex flex-col gap-2">
+                      <span className="font-semibold">Frota Saturada!</span>
+                      <span>Nenhum entregador tem tempo livre suficiente para esta rota hoje.</span>
+                      <button 
+                        type="button"
+                        onClick={() => {
+                          const tomorrow = new Date();
+                          tomorrow.setDate(tomorrow.getDate() + 1);
+                          setNewRoute(prev => ({...prev, departureTime: tomorrow.toISOString().slice(0, 16)}));
+                          setIsFleetSaturated(false); // reset warning since we moved the date
+                        }}
+                        className="self-start px-3 py-1.5 bg-white border border-red-200 text-red-600 rounded-lg text-xs font-semibold hover:bg-red-100 transition-colors"
+                      >
+                        Agendar para o Dia Seguinte
+                      </button>
+                    </div>
+                  )}
                 </div>
                 
                 <div>
