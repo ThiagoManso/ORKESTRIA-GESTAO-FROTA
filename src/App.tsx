@@ -106,7 +106,13 @@ export default function App() {
   }
 
   const renderContent = () => {
-    switch (currentView) {
+    const userPermissions = currentUser?.permissions || [];
+    const hasPermission = (view: ViewState) => userPermissions.includes(view);
+
+    // Default to 'my_requests' if they don't have permission for the requested view
+    const safeView = hasPermission(currentView) ? currentView : (userPermissions.length > 0 ? userPermissions[0] : 'my_requests');
+
+    switch (safeView) {
       case 'dashboard':
         return <Dashboard />;
       case 'routes':
