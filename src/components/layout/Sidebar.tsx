@@ -36,9 +36,10 @@ export default function Sidebar({ currentView, onViewChange, isOpen, setIsOpen, 
     { id: 'users', label: 'Usuários', icon: Users },
   ];
   
-  const filteredMenuItems = menuItems.filter(item => 
-    !currentUser || currentUser.permissions.includes(item.id)
-  );
+  const filteredMenuItems = menuItems.filter(item => {
+    const userPermissions = currentUser?.permissions || [];
+    return !currentUser || userPermissions.includes(item.id);
+  });
 
   return (
     <>
@@ -97,7 +98,7 @@ export default function Sidebar({ currentView, onViewChange, isOpen, setIsOpen, 
         </div>
 
         <div className="p-4 border-t border-slate-100">
-          {(!currentUser || currentUser.permissions.includes('settings')) && (
+          {(!currentUser || (currentUser.permissions || []).includes('settings')) && (
             <button 
               onClick={() => onViewChange('settings')}
               className={cn(

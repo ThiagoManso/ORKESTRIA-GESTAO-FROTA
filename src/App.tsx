@@ -52,10 +52,11 @@ export default function App() {
   // Set default view based on user permissions when user logs in
   useEffect(() => {
     if (currentUser) {
-      if (!currentUser.permissions.includes(currentView)) {
+      const userPermissions = currentUser.permissions || [];
+      if (!userPermissions.includes(currentView)) {
         // If current view is not allowed, switch to the first allowed view
-        if (currentUser.permissions.length > 0) {
-          setCurrentView(currentUser.permissions[0]);
+        if (userPermissions.length > 0) {
+          setCurrentView(userPermissions[0]);
         }
       }
     }
