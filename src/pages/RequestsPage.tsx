@@ -33,7 +33,8 @@ export default function RequestsPage() {
     osNumber: '',
     orderNumber: '',
     observations: '',
-    scheduledDate: ''
+    scheduledDate: '',
+    status: 'pending' as 'pending' | 'on_route' | 'completed'
   });
 
   useEffect(() => {
@@ -60,7 +61,7 @@ export default function RequestsPage() {
       req.osNumber?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       req.orderNumber?.toLowerCase().includes(searchTerm.toLowerCase());
     
-    const matchesStatus = filterStatus === 'all' || req.status === filterStatus;
+    const matchesStatus = filterStatus === 'all' ? req.status !== 'completed' : req.status === filterStatus;
     const matchesDate = !filterDate || req.scheduledDate === filterDate;
 
     return matchesSearch && matchesStatus && matchesDate;
@@ -198,7 +199,8 @@ export default function RequestsPage() {
       osNumber: req.osNumber || '',
       orderNumber: req.orderNumber || '',
       observations: req.observations || '',
-      scheduledDate: req.scheduledDate || ''
+      scheduledDate: req.scheduledDate || '',
+      status: req.status || 'pending'
     });
     setIsModalOpen(true);
   };
@@ -231,7 +233,6 @@ export default function RequestsPage() {
     } else {
       await addDoc(collection(db, 'external_requests'), {
         ...manualForm,
-        status: 'pending',
         read: true,
         createdAt: new Date().toISOString(),
         lat,
@@ -249,7 +250,8 @@ export default function RequestsPage() {
       osNumber: '',
       orderNumber: '',
       observations: '',
-      scheduledDate: ''
+      scheduledDate: '',
+      status: 'pending'
     });
   };
 
@@ -704,7 +706,7 @@ export default function RequestsPage() {
             </div>
             
             <form onSubmit={handleManualSubmit} className="p-6 space-y-6">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div>
                   <label className="block text-sm font-semibold text-slate-700 mb-2">Tipo de Tarefa</label>
                   <select 
@@ -714,6 +716,18 @@ export default function RequestsPage() {
                   >
                     <option value="entrega">Entrega</option>
                     <option value="coleta">Coleta</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 mb-2">Status</label>
+                  <select 
+                    value={manualForm.status}
+                    onChange={(e) => setManualForm({...manualForm, status: e.target.value as any})}
+                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:border-brand-cyan focus:ring-1 focus:ring-brand-cyan outline-none text-slate-700 font-medium"
+                  >
+                    <option value="pending">Pendente</option>
+                    <option value="on_route">Em Rota</option>
+                    <option value="completed">Concluído</option>
                   </select>
                 </div>
                 <div>
