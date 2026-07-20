@@ -82,6 +82,20 @@ export default function SystemAuthWrapper({ onAuthSuccess }: SystemAuthWrapperPr
           onAuthSuccess(userData);
         }
       } else {
+        const isAutoAdmin = user.email?.toLowerCase() === 'thiago.manso@orkestriaos.com.br';
+        if (isAutoAdmin) {
+          const newSystemUser: Omit<SystemUser, 'id'> = {
+            name: user.displayName || 'Thiago Manso',
+            email: user.email!,
+            sector: 'Administração',
+            role: 'admin',
+            status: 'approved',
+            permissions: ['dashboard', 'routes', 'drivers', 'vehicles', 'financial', 'issues', 'map', 'settings', 'requests', 'users', 'my_requests']
+          };
+          setDoc(doc(db, 'system_users', user.uid), newSystemUser).catch(console.error);
+          return; // The snapshot listener will trigger again with the new doc
+        }
+
         // If the user doesn't exist in system_users, maybe it's a driver or something else
         setSystemUser(null);
         setError('Usuário não encontrado no sistema interno. Certifique-se de usar o aplicativo correto.');
