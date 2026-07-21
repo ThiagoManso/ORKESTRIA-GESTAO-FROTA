@@ -150,9 +150,10 @@ export default function InternalRequestsPage({ currentUser }: InternalRequestsPa
 
       <FleetAvailabilityPanel targetDateStr={new Date().toLocaleDateString('pt-BR')} />
 
-      {/* Tabela */}
+      {/* Tabela e Cards Responsivos */}
       <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-        <div className="overflow-x-auto">
+        {/* Visualização Desktop (Tabela) */}
+        <div className="hidden md:block overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="bg-slate-50 border-b border-slate-200 text-xs font-semibold text-slate-500 uppercase tracking-wider">
@@ -206,6 +207,48 @@ export default function InternalRequestsPage({ currentUser }: InternalRequestsPa
               )}
             </tbody>
           </table>
+        </div>
+
+        {/* Visualização Mobile (Cards) */}
+        <div className="md:hidden divide-y divide-slate-100">
+          {loading ? (
+            <div className="py-8 text-center text-slate-500">Carregando seus chamados...</div>
+          ) : requests.length === 0 ? (
+            <div className="py-12 text-center text-slate-500">
+              <Package size={48} className="text-slate-300 mb-4 mx-auto" />
+              <p className="text-lg font-medium text-slate-600">Nenhum chamado encontrado</p>
+              <p className="text-sm">Você ainda não fez nenhuma solicitação.</p>
+            </div>
+          ) : (
+            requests.map((req) => (
+              <div key={req.id} className="p-4 flex flex-col gap-3 hover:bg-slate-50 transition-colors">
+                <div className="flex justify-between items-start">
+                  <div>
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-slate-100 text-slate-700 capitalize mb-1.5">
+                      {req.type === 'coleta' ? <Package size={12} /> : <MapPin size={12} />}
+                      {req.type}
+                    </span>
+                    <div className="font-bold text-slate-800">{req.type === 'coleta' ? req.osNumber : req.orderNumber}</div>
+                  </div>
+                  <div>
+                    {req.status === 'completed' && <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] uppercase font-bold bg-emerald-100 text-emerald-700"><Check size={12} /> Concluído</span>}
+                    {req.status === 'on_route' && <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] uppercase font-bold bg-blue-100 text-blue-700"><Clock size={12} /> Em Rota</span>}
+                    {(req.status === 'pending' || !req.status) && <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] uppercase font-bold bg-amber-100 text-amber-700"><Clock size={12} /> Pendente</span>}
+                  </div>
+                </div>
+                
+                <div className="text-sm text-slate-600 line-clamp-2">
+                  <MapPin size={14} className="inline mr-1 text-slate-400" />
+                  {req.address}
+                </div>
+                
+                <div className="flex justify-between items-center text-xs text-slate-500 mt-1 pt-2 border-t border-slate-50">
+                  <div>Criado: {formatDate(req.createdAt)}</div>
+                  <div className="font-medium text-slate-700">Para: {formatScheduledDate(req.scheduledDate)}</div>
+                </div>
+              </div>
+            ))
+          )}
         </div>
       </div>
 
