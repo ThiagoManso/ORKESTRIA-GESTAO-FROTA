@@ -132,9 +132,9 @@ export default function InternalRequestsPage({ currentUser }: InternalRequestsPa
   };
 
   return (
-    <div className="p-6 sm:p-8 max-w-7xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+    <div className="p-4 sm:p-6 lg:p-8 w-full h-full flex flex-col animate-in fade-in slide-in-from-bottom-4 duration-500">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
         <div>
           <h1 className="text-2xl font-bold text-slate-800">Meus Chamados</h1>
           <p className="text-slate-500 mt-1">Acompanhe suas solicitações de logística.</p>
@@ -151,9 +151,9 @@ export default function InternalRequestsPage({ currentUser }: InternalRequestsPa
       <FleetAvailabilityPanel targetDateStr={new Date().toLocaleDateString('pt-BR')} />
 
       {/* Tabela e Cards Responsivos */}
-      <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+      <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex-1 flex flex-col">
         {/* Visualização Desktop (Tabela) */}
-        <div className="hidden md:block overflow-x-auto">
+        <div className="hidden md:block overflow-x-auto flex-1">
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="bg-slate-50 border-b border-slate-200 text-xs font-semibold text-slate-500 uppercase tracking-wider">
@@ -210,7 +210,7 @@ export default function InternalRequestsPage({ currentUser }: InternalRequestsPa
         </div>
 
         {/* Visualização Mobile (Cards) */}
-        <div className="md:hidden divide-y divide-slate-100">
+        <div className="md:hidden divide-y divide-slate-100 flex-1 overflow-y-auto">
           {loading ? (
             <div className="py-8 text-center text-slate-500">Carregando seus chamados...</div>
           ) : requests.length === 0 ? (
