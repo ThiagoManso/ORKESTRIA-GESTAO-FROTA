@@ -559,10 +559,12 @@ export default function RoutesPage() {
          status: existingDest ? existingDest.status : ('pending' as const)
        });
     }
+    const allCompleted = stopDetails.length > 0 && stopDetails.every(s => s.status === 'completed' || s.status === 'issue');
+    const newStatus = allCompleted ? 'completed' : (updatedRoute.status === 'completed' ? 'in_progress' : updatedRoute.status);
     
     await update(editingRoute.id, {
       driver: updatedRoute.driver || 'Aguardando',
-      status: updatedRoute.status,
+      status: newStatus,
       stops: updatedRoute.stops,
       distance: finalDistance,
       estimatedTime: finalEstimatedTime,
@@ -655,12 +657,14 @@ export default function RoutesPage() {
 
       const newStopDetails = route.stopDetails?.filter(s => s.id !== stopToRemove.id) || [];
       const newStopsCount = Math.max(1, newStopDetails.length);
+      const allCompleted = newStopDetails.length > 0 && newStopDetails.every(s => s.status === 'completed' || s.status === 'issue');
 
       await update(route.id, {
         intermediates: newIntermediates,
         intermediateMetadata: newMeta,
         stopDetails: newStopDetails,
-        stops: newStopsCount
+        stops: newStopsCount,
+        status: allCompleted ? 'completed' : (route.status === 'completed' ? 'in_progress' : route.status)
       });
       
       if (selectedRoute?.id === route.id) {
@@ -690,11 +694,11 @@ export default function RoutesPage() {
       const newStopDetails = [...route.stopDetails];
       newStopDetails[stopIndex] = { ...newStopDetails[stopIndex], status: 'completed' };
       
-      const allCompleted = newStopDetails.every(s => s.status === 'completed' || s.status === 'issue');
+      const allCompleted = newStopDetails.length > 0 && newStopDetails.every(s => s.status === 'completed' || s.status === 'issue');
       
       await update(route.id, { 
         stopDetails: newStopDetails,
-        ...(allCompleted ? { status: 'completed' } : {})
+        status: allCompleted ? 'completed' : (route.status === 'completed' ? 'in_progress' : route.status)
       });
 
       if (newStopDetails[stopIndex].externalRequestId) {
@@ -706,7 +710,7 @@ export default function RoutesPage() {
         setSelectedRoute(prev => prev ? {
           ...prev,
           stopDetails: newStopDetails,
-          ...(allCompleted ? { status: 'completed' } : {})
+          status: allCompleted ? 'completed' : (prev.status === 'completed' ? 'in_progress' : prev.status)
         } : null);
       }
       alert('Parada marcada como entregue.');
@@ -731,11 +735,11 @@ export default function RoutesPage() {
         issueDescription: reason ? `(Baixa manual ADM) ${reason}` : '(Baixa manual ADM)'
       };
       
-      const allCompleted = newStopDetails.every(s => s.status === 'completed' || s.status === 'issue');
+      const allCompleted = newStopDetails.length > 0 && newStopDetails.every(s => s.status === 'completed' || s.status === 'issue');
       
       await update(route.id, { 
         stopDetails: newStopDetails,
-        ...(allCompleted ? { status: 'completed' } : {})
+        status: allCompleted ? 'completed' : (route.status === 'completed' ? 'in_progress' : route.status)
       });
 
       if (newStopDetails[stopIndex].externalRequestId) {
@@ -747,7 +751,7 @@ export default function RoutesPage() {
         setSelectedRoute(prev => prev ? {
           ...prev,
           stopDetails: newStopDetails,
-          ...(allCompleted ? { status: 'completed' } : {})
+          status: allCompleted ? 'completed' : (prev.status === 'completed' ? 'in_progress' : prev.status)
         } : null);
       }
       alert('Parada marcada com problema.');

@@ -297,8 +297,7 @@ export default function DriverViewPage({ driverId, driverName, driverStatus }: D
     const newStopDetails = [...route.stopDetails];
     newStopDetails[stopIndex] = { ...newStopDetails[stopIndex], status: 'completed' };
     
-    // Check if all stops are completed
-    const allCompleted = newStopDetails.every(s => s.status === 'completed' || s.status === 'issue');
+    const allCompleted = newStopDetails.length > 0 && newStopDetails.every(s => s.status === 'completed' || s.status === 'issue');
     
     if (allCompleted) {
       setSummaryRoute({ ...route, stopDetails: newStopDetails, status: 'completed' });
@@ -306,7 +305,7 @@ export default function DriverViewPage({ driverId, driverName, driverStatus }: D
 
     await update(route.id, { 
       stopDetails: newStopDetails,
-      ...(allCompleted ? { status: 'completed' } : {})
+      status: allCompleted ? 'completed' : (route.status === 'completed' ? 'in_progress' : route.status)
     });
     
     if (newStopDetails[stopIndex].externalRequestId) {
@@ -339,7 +338,7 @@ export default function DriverViewPage({ driverId, driverName, driverStatus }: D
         issuePhotoUrl: photoUrl
       };
       
-      const allCompleted = newStopDetails.every(s => s.status === 'completed' || s.status === 'issue');
+      const allCompleted = newStopDetails.length > 0 && newStopDetails.every(s => s.status === 'completed' || s.status === 'issue');
       
       if (allCompleted) {
         setSummaryRoute({ ...activeRoute, stopDetails: newStopDetails, status: 'completed' });
@@ -347,7 +346,7 @@ export default function DriverViewPage({ driverId, driverName, driverStatus }: D
 
       await update(activeRoute.id, { 
         stopDetails: newStopDetails,
-        ...(allCompleted ? { status: 'completed' } : {})
+        status: allCompleted ? 'completed' : (activeRoute.status === 'completed' ? 'in_progress' : activeRoute.status)
       });
       
       if (newStopDetails[currentIssueStopIndex].externalRequestId) {
