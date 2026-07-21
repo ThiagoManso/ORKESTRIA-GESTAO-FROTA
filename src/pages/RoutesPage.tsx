@@ -1268,8 +1268,8 @@ export default function RoutesPage() {
 
       {isManageModalOpen && currentManageRoute && (
         <div className="fixed inset-0 bg-slate-900/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl w-full max-w-lg shadow-xl overflow-hidden animate-in zoom-in-95 duration-200">
-            <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+          <div className="bg-white rounded-2xl w-full max-w-5xl shadow-xl overflow-hidden animate-in zoom-in-95 duration-200 flex flex-col max-h-[90vh]">
+            <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50 shrink-0">
               <h2 className="text-xl font-bold text-slate-800">Gerenciar Rota #{formatRouteId(currentManageRoute)}</h2>
               <button 
                 onClick={() => setIsManageModalOpen(false)}
@@ -1279,130 +1279,137 @@ export default function RoutesPage() {
               </button>
             </div>
             
-            <div className="p-6">
-              <div className="flex items-center gap-4 mb-6">
-                <div className="w-16 h-16 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center border border-blue-200 flex-shrink-0">
-                  <MapPin size={32} />
-                </div>
-                <div>
-                  <h3 className="font-bold text-slate-800 text-xl">Detalhes da Rota</h3>
-                  <div className="flex items-center gap-2 mt-1">
-                    <span className="text-sm font-medium text-slate-600">{currentManageRoute.date}</span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="space-y-4 mb-8">
-                <div className="flex items-center justify-between p-4 bg-slate-50 rounded-xl border border-slate-100">
-                  <div className="flex items-center gap-3 text-slate-700">
-                    <Truck size={18} className="text-slate-400" />
+            <div className="p-6 overflow-y-auto flex-1 custom-scrollbar">
+              <div className="flex flex-col lg:flex-row gap-8">
+                {/* Lado Esquerdo - Detalhes */}
+                <div className="flex-1 space-y-6">
+                  <div className="flex items-center gap-4">
+                    <div className="w-16 h-16 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center border border-blue-200 flex-shrink-0">
+                      <MapPin size={32} />
+                    </div>
                     <div>
-                      <div className="text-xs text-slate-500 font-medium">Entregador Responsável</div>
-                      <div className="font-semibold">{currentManageRoute.driver}</div>
+                      <h3 className="font-bold text-slate-800 text-xl">Detalhes da Rota</h3>
+                      <div className="flex items-center gap-2 mt-1">
+                        <span className="text-sm font-medium text-slate-600">{currentManageRoute.date}</span>
+                      </div>
                     </div>
                   </div>
-                </div>
-                
-                <div className="flex flex-col p-4 bg-slate-50 rounded-xl border border-slate-100 gap-4">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3 text-slate-700">
-                      <CheckCircle size={18} className="text-emerald-500" />
-                      <div>
-                        <div className="text-xs text-slate-500 font-medium">Status Atual</div>
-                        <div className="font-semibold">
-                          <StatusBadge status={currentManageRoute.status} />
+
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between p-4 bg-slate-50 rounded-xl border border-slate-100">
+                      <div className="flex items-center gap-3 text-slate-700">
+                        <Truck size={18} className="text-slate-400" />
+                        <div>
+                          <div className="text-xs text-slate-500 font-medium">Entregador Responsável</div>
+                          <div className="font-semibold">{currentManageRoute.driver}</div>
                         </div>
                       </div>
                     </div>
                     
-                    {(() => {
-                      const completedStops = currentManageRoute.stopDetails?.filter(s => s.status === 'completed' || s.status === 'issue').length || (currentManageRoute.status === 'completed' ? currentManageRoute.stops : 0);
-                      const totalStops = currentManageRoute.stopDetails?.length || currentManageRoute.stops || 1;
-                      const progress = Math.min(100, Math.round((completedStops / totalStops) * 100));
-                      
-                      let estimatedEndTime = '--:--';
-                      if (currentManageRoute.departureTime && currentManageRoute.estimatedTime) {
-                        const [depHours, depMins] = currentManageRoute.departureTime.split(':').map(Number);
-                        // estimatedTime is usually like "2 h" or "2.5 h" or "02:30" or something.
-                        // For simplicity, let's just parse the first number we find and assume it's minutes or hours.
-                        // Actually Google Maps Directions returns something like "1 hora 30 minutos" or "15 mins".
-                        // Let's just create a mock finish time, e.g. adding 2 hours.
-                        // Since parsing Google Maps natural language is complex, we will just use a placeholder text or a rough heuristic.
-                        let addMinutes = 120; // default 2 hours
-                        const estMatch = currentManageRoute.estimatedTime.match(/(\d+)/g);
-                        if (estMatch) {
-                          if (currentManageRoute.estimatedTime.includes('h') || currentManageRoute.estimatedTime.includes('hora')) {
-                            addMinutes = parseInt(estMatch[0]) * 60 + (estMatch[1] ? parseInt(estMatch[1]) : 0);
-                          } else {
-                            addMinutes = parseInt(estMatch[0]);
+                    <div className="flex flex-col p-4 bg-slate-50 rounded-xl border border-slate-100 gap-4">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3 text-slate-700">
+                          <CheckCircle size={18} className="text-emerald-500" />
+                          <div>
+                            <div className="text-xs text-slate-500 font-medium">Status Atual</div>
+                            <div className="font-semibold">
+                              <StatusBadge status={currentManageRoute.status} />
+                            </div>
+                          </div>
+                        </div>
+                        
+                        {(() => {
+                          const completedStops = currentManageRoute.stopDetails?.filter(s => s.status === 'completed' || s.status === 'issue').length || (currentManageRoute.status === 'completed' ? currentManageRoute.stops : 0);
+                          const totalStops = currentManageRoute.stopDetails?.length || currentManageRoute.stops || 1;
+                          const progress = Math.min(100, Math.round((completedStops / totalStops) * 100));
+                          
+                          let estimatedEndTime = '--:--';
+                          if (currentManageRoute.departureTime && currentManageRoute.estimatedTime) {
+                            const [depHours, depMins] = currentManageRoute.departureTime.split(':').map(Number);
+                            let addMinutes = 120;
+                            const estMatch = currentManageRoute.estimatedTime.match(/(\d+)/g);
+                            if (estMatch) {
+                              if (currentManageRoute.estimatedTime.includes('h') || currentManageRoute.estimatedTime.includes('hora')) {
+                                addMinutes = parseInt(estMatch[0]) * 60 + (estMatch[1] ? parseInt(estMatch[1]) : 0);
+                              } else {
+                                addMinutes = parseInt(estMatch[0]);
+                              }
+                            }
+                            const endDate = new Date();
+                            endDate.setHours(depHours || 8, depMins || 0, 0);
+                            endDate.setMinutes(endDate.getMinutes() + addMinutes);
+                            estimatedEndTime = `${endDate.getHours().toString().padStart(2, '0')}:${endDate.getMinutes().toString().padStart(2, '0')}`;
                           }
-                        }
-                        const endDate = new Date();
-                        endDate.setHours(depHours || 8, depMins || 0, 0);
-                        endDate.setMinutes(endDate.getMinutes() + addMinutes);
-                        estimatedEndTime = `${endDate.getHours().toString().padStart(2, '0')}:${endDate.getMinutes().toString().padStart(2, '0')}`;
-                      }
 
-                      return (
-                        <div className="text-right">
-                          <div className="text-xs text-slate-500 font-medium mb-1">Previsão de Término</div>
-                          <div className="font-semibold text-slate-800">{estimatedEndTime}</div>
-                        </div>
-                      );
-                    })()}
-                  </div>
-
-                  {(() => {
-                    const completedStops = currentManageRoute.stopDetails?.filter(s => s.status === 'completed' || s.status === 'issue').length || (currentManageRoute.status === 'completed' ? currentManageRoute.stops : 0);
-                    const totalStops = currentManageRoute.stopDetails?.length || currentManageRoute.stops || 1;
-                    const progress = Math.min(100, Math.round((completedStops / totalStops) * 100));
-
-                    return (
-                      <div>
-                        <div className="flex justify-between text-xs text-slate-500 font-medium mb-1.5">
-                          <span>Progresso da Rota</span>
-                          <span>{progress}% concluído</span>
-                        </div>
-                        <div className="h-2 w-full bg-slate-200 rounded-full overflow-hidden">
-                          <div 
-                            className={`h-full rounded-full transition-all duration-500 ${progress === 100 ? 'bg-emerald-500' : 'bg-blue-500'}`}
-                            style={{ width: `${progress}%` }}
-                          />
-                        </div>
+                          return (
+                            <div className="text-right">
+                              <div className="text-xs text-slate-500 font-medium mb-1">Previsão de Término</div>
+                              <div className="font-semibold text-slate-800">{estimatedEndTime}</div>
+                            </div>
+                          );
+                        })()}
                       </div>
-                    );
-                  })()}
-                </div>
 
-                <div className="flex flex-col p-4 bg-slate-50 rounded-xl border border-slate-100">
-                  <div className="flex justify-between items-start gap-4">
-                    <div className="flex items-center gap-3 text-slate-700">
-                      <Clock size={18} className="text-blue-500 shrink-0" />
-                      <div>
-                        <div className="text-xs text-slate-500 font-medium">Resumo Operacional</div>
-                        <div className="font-semibold text-sm">
-                          {currentManageRoute.stops} paradas • {currentManageRoute.distance} km • est. {currentManageRoute.estimatedTime}
+                      {(() => {
+                        const completedStops = currentManageRoute.stopDetails?.filter(s => s.status === 'completed' || s.status === 'issue').length || (currentManageRoute.status === 'completed' ? currentManageRoute.stops : 0);
+                        const totalStops = currentManageRoute.stopDetails?.length || currentManageRoute.stops || 1;
+                        const progress = Math.min(100, Math.round((completedStops / totalStops) * 100));
+
+                        return (
+                          <div>
+                            <div className="flex justify-between text-xs text-slate-500 font-medium mb-1.5">
+                              <span>Progresso da Rota</span>
+                              <span>{progress}% concluído</span>
+                            </div>
+                            <div className="h-2 w-full bg-slate-200 rounded-full overflow-hidden">
+                              <div 
+                                className={`h-full rounded-full transition-all duration-500 ${progress === 100 ? 'bg-emerald-500' : 'bg-blue-500'}`}
+                                style={{ width: `${progress}%` }}
+                              />
+                            </div>
+                          </div>
+                        );
+                      })()}
+                    </div>
+
+                    <div className="flex flex-col p-4 bg-slate-50 rounded-xl border border-slate-100">
+                      <div className="flex justify-between items-start gap-4">
+                        <div className="flex items-center gap-3 text-slate-700">
+                          <Clock size={18} className="text-blue-500 shrink-0" />
+                          <div>
+                            <div className="text-xs text-slate-500 font-medium">Resumo Operacional</div>
+                            <div className="font-semibold text-sm">
+                              {currentManageRoute.stops} paradas • {currentManageRoute.distance} km • est. {currentManageRoute.estimatedTime}
+                            </div>
+                          </div>
                         </div>
+                        {currentManageRoute.origin && currentManageRoute.destination && (
+                          <a 
+                            href={`https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(currentManageRoute.origin)}&destination=${encodeURIComponent(currentManageRoute.destination)}${currentManageRoute.intermediates?.length ? `&waypoints=${encodeURIComponent(currentManageRoute.intermediates.join('|'))}` : ''}`} 
+                            target="_blank" 
+                            rel="noreferrer"
+                            className="text-xs font-medium px-3 py-1.5 bg-blue-50 text-blue-600 hover:bg-blue-100 rounded-lg transition-colors flex items-center gap-1.5 shrink-0"
+                          >
+                            <MapPin size={14} />
+                            Mapa
+                          </a>
+                        )}
                       </div>
                     </div>
-                    {currentManageRoute.origin && currentManageRoute.destination && (
-                      <a 
-                        href={`https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(currentManageRoute.origin)}&destination=${encodeURIComponent(currentManageRoute.destination)}${currentManageRoute.intermediates?.length ? `&waypoints=${encodeURIComponent(currentManageRoute.intermediates.join('|'))}` : ''}`} 
-                        target="_blank" 
-                        rel="noreferrer"
-                        className="text-xs font-medium px-3 py-1.5 bg-blue-50 text-blue-600 hover:bg-blue-100 rounded-lg transition-colors flex items-center gap-1.5 shrink-0"
-                      >
-                        <MapPin size={14} />
-                        Mapa
-                      </a>
-                    )}
+                  </div>
+                </div>
+
+                {/* Lado Direito - Paradas */}
+                <div className="flex-1 flex flex-col bg-slate-50/50 rounded-2xl border border-slate-100 p-5">
+                  <div className="text-sm font-bold text-slate-800 uppercase tracking-wider mb-4 pb-3 border-b border-slate-200 flex items-center justify-between">
+                    <span>Paradas da Rota</span>
+                    <span className="bg-slate-200 text-slate-600 py-0.5 px-2 rounded-full text-xs">{currentManageRoute.stopDetails?.length || 0} locais</span>
                   </div>
                   
-                  {currentManageRoute.stopDetails && currentManageRoute.stopDetails.length > 0 && (
-                    <div className="mt-4 space-y-3 pt-4 border-t border-slate-200">
-                      <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Paradas</div>
+                  {currentManageRoute.stopDetails && currentManageRoute.stopDetails.length > 0 ? (
+                    <div className="space-y-4 overflow-y-auto pr-2 custom-scrollbar flex-1 max-h-[50vh]">
                       {currentManageRoute.stopDetails.map((stop, index) => (
-                        <div key={stop.id || index} className="flex items-start gap-3">
+                        <div key={stop.id || index} className="flex items-start gap-3 bg-white p-3 rounded-xl border border-slate-100 shadow-sm">
                           <div className={`mt-0.5 flex-shrink-0 w-4 h-4 rounded-full border-2 ${
                             stop.status === 'completed' ? 'border-emerald-500 bg-emerald-500' :
                             stop.status === 'issue' ? 'border-red-500 bg-red-500' :
@@ -1458,36 +1465,40 @@ export default function RoutesPage() {
                         </div>
                       ))}
                     </div>
+                  ) : (
+                    <div className="flex-1 flex items-center justify-center text-slate-500 text-sm py-8">
+                      Nenhuma parada detalhada disponível.
+                    </div>
                   )}
                 </div>
               </div>
+            </div>
 
-              <div className="flex gap-3">
+            <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex gap-3 shrink-0">
+              <button 
+                onClick={() => setIsManageModalOpen(false)}
+                className="px-6 py-2.5 bg-white border border-slate-200 text-slate-700 rounded-xl font-semibold hover:bg-slate-50 transition-colors shadow-sm"
+              >
+                Fechar
+              </button>
+              <div className="flex-1 flex gap-3 justify-end">
                 <button 
-                  onClick={() => setIsManageModalOpen(false)}
-                  className="px-4 py-2.5 bg-white border border-slate-200 text-slate-700 rounded-xl font-semibold hover:bg-slate-50 transition-colors shadow-sm"
+                  onClick={() => handleDeleteRoute(currentManageRoute.id)}
+                  className="px-6 py-2.5 bg-red-50 text-red-600 rounded-xl font-semibold hover:bg-red-100 transition-colors shadow-sm flex items-center justify-center gap-2"
                 >
-                  Fechar
+                  <Trash2 size={18} />
+                  Excluir
                 </button>
-                <div className="flex-1 flex gap-3 justify-end">
-                  <button 
-                    onClick={() => handleDeleteRoute(currentManageRoute.id)}
-                    className="flex-1 px-4 py-2.5 bg-red-50 text-red-600 rounded-xl font-semibold hover:bg-red-100 transition-colors shadow-sm flex items-center justify-center gap-2"
-                  >
-                    <Trash2 size={18} />
-                    Excluir
-                  </button>
-                  <button 
-                    onClick={() => {
-                      setEditingRoute(currentManageRoute);
-                      setIsManageModalOpen(false);
-                      setIsEditModalOpen(true);
-                    }}
-                    className="flex-1 px-4 py-2.5 bg-slate-100 text-slate-700 rounded-xl font-semibold hover:bg-slate-200 transition-colors shadow-sm"
-                  >
-                    Editar Rota
-                  </button>
-                </div>
+                <button 
+                  onClick={() => {
+                    setEditingRoute(currentManageRoute);
+                    setIsManageModalOpen(false);
+                    setIsEditModalOpen(true);
+                  }}
+                  className="px-6 py-2.5 bg-slate-800 text-white rounded-xl font-semibold hover:bg-slate-700 transition-colors shadow-sm"
+                >
+                  Editar Rota
+                </button>
               </div>
             </div>
           </div>
