@@ -110,6 +110,8 @@ export default function RoutesPage() {
   
   const [isCalculating, setIsCalculating] = useState(false);
   const [isFleetSaturated, setIsFleetSaturated] = useState(false);
+  const [filterStatus, setFilterStatus] = useState<'all' | 'pending' | 'in_progress' | 'completed' | 'issue'>('all');
+  const [filterDate, setFilterDate] = useState<string>(''); // YYYY-MM-DD
 
   useEffect(() => {
     // Check if we arrived here from Map selection
@@ -758,9 +760,25 @@ export default function RoutesPage() {
 
   const currentManageRoute = selectedRoute ? (routes.find(r => r.id === selectedRoute.id) || selectedRoute) : null;
 
-  const todayStr = new Date().toLocaleDateString('pt-BR');
+  const filteredRoutes = routes.filter(route => {
+    const matchesStatus = filterStatus === 'all' ? true : route.status === filterStatus;
+    let matchesDate = true;
+    if (filterDate) {
+      const [y, m, d] = filterDate.split('-');
+      const formattedFilterDate = `${d}/${m}/${y}`;
+      matchesDate = route.date === formattedFilterDate;
+    }
+    return matchesStatus && matchesDate;
+  });
+
+  let targetDateStr = new Date().toLocaleDateString('pt-BR');
+  if (filterDate) {
+    const [y, m, d] = filterDate.split('-');
+    targetDateStr = `${d}/${m}/${y}`;
+  }
+
   const activeDriversStatus = (drivers?.filter((d: any) => d.status === 'active' || d.status === 'on_route') || []).map((d: any) => {
-    const avail = getDriverAvailability(d.name, todayStr);
+    const avail = getDriverAvailability(d.name, targetDateStr);
     const usedMinutes = workdayTotalMinutes - avail.minutesLeft;
     const percent = Math.min(100, Math.max(0, (usedMinutes / workdayTotalMinutes) * 100));
     
@@ -779,6 +797,18 @@ export default function RoutesPage() {
     };
   });
 
+  const totalFleetMinutes = activeDriversStatus.length * workdayTotalMinutes;
+  const totalUsedMinutes = activeDriversStatus.reduce((sum, d) => sum + d.usedMinutes, 0);
+  const totalFleetPercent = totalFleetMinutes > 0 ? Math.min(100, Math.max(0, (totalUsedMinutes / totalFleetMinutes) * 100)) : 0;
+  
+  let totalColorClass = 'bg-emerald-500';
+  if (totalFleetPercent > 90) totalColorClass = 'bg-red-500';
+  else if (totalFleetPercent > 75) totalColorClass = 'bg-amber-500';
+  else if (totalFleetPercent > 50) totalColorClass = 'bg-blue-500';
+
+  const totalMinutesLeft = totalFleetMinutes - totalUsedMinutes;
+  const totalFormattedLeft = `${Math.floor(totalMinutesLeft / 60)}h ${totalMinutesLeft % 60}m`;
+
   return (
     <div className="p-4 sm:p-6 lg:p-8 w-full h-full flex flex-col animate-in fade-in slide-in-from-bottom-4 duration-500">
       
@@ -787,9 +817,31 @@ export default function RoutesPage() {
           <h1 className="text-2xl font-bold text-slate-800 mb-1">Rotas e Serviços</h1>
           <p className="text-slate-500 text-sm sm:text-base">Gerencie a expedição e o andamento das rotas.</p>
         </div>
-        <div className="flex gap-3 w-full sm:w-auto">
-          <button className="flex-1 sm:flex-none flex justify-center items-center gap-2 px-4 py-2.5 bg-white border border-slate-200 text-slate-700 rounded-xl font-medium hover:bg-slate-50 transition-colors shadow-sm">
-            <Filter size={18} /> Filtros
+        <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
+          <div className="flex gap-2">
+            <input 
+              type="date"
+              value={filterDate}
+              onChange={(e) => setFilterDate(e.target.value)}
+              className="px-4 py-2 bg-white border border-slate-200 rounded-xl text-sm focus:border-primary focus:ring-1 focus:ring-primary outline-none shadow-sm font-medium text-slate-700"
+            />
+            <select
+              value={filterStatus}
+              onChange={(e) => setFilterStatus(e.target.value as any)}
+              className="px-4 py-2 bg-white border border-slate-200 rounded-xl text-sm focus:border-primary focus:ring-1 focus:ring-primary outline-none shadow-sm font-medium text-slate-700"
+            >
+              <option value="all">Todos os Status</option>
+              <option value="pending">Pendentes</option>
+              <option value="in_progress">Em andamento</option>
+              <option value="completed">Finalizadas</option>
+              <option value="issue">Problema</option>
+            </select>
+          </div>
+          <button 
+            onClick={() => { setFilterDate(''); setFilterStatus('all'); }}
+            className="flex-1 sm:flex-none flex justify-center items-center gap-2 px-4 py-2 bg-white border border-slate-200 text-slate-700 rounded-xl font-medium hover:bg-slate-50 transition-colors shadow-sm"
+          >
+            <Filter size={18} /> Limpar
           </button>
         </div>
       </div>
@@ -797,7 +849,29 @@ export default function RoutesPage() {
       {/* Driver Saturation Panel */}
       {activeDriversStatus.length > 0 && (
         <div className="mb-8">
-          <h2 className="text-sm font-semibold text-slate-600 mb-3 uppercase tracking-wider">Disponibilidade da Frota (Hoje)</h2>
+          <h2 className="text-sm font-semibold text-slate-600 mb-3 uppercase tracking-wider">
+            Disponibilidade da Frota ({filterDate ? targetDateStr : 'Hoje'})
+          </h2>
+          
+          <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm mb-4">
+            <div className="flex justify-between items-center mb-2">
+              <div>
+                <span className="font-bold text-slate-800 text-lg">Visão Geral da Frota</span>
+                <span className="text-slate-500 text-sm ml-2">({activeDriversStatus.length} motoristas)</span>
+              </div>
+              <div className="text-right">
+                <span className={`font-bold text-lg ${totalFleetPercent > 90 ? 'text-red-600' : 'text-slate-700'}`}>{totalFormattedLeft} livres</span>
+              </div>
+            </div>
+            <div className="w-full bg-slate-100 rounded-full h-4 overflow-hidden mb-2">
+              <div className={`h-4 rounded-full ${totalColorClass} transition-all duration-500`} style={{ width: `${totalFleetPercent}%` }}></div>
+            </div>
+            <div className="flex justify-between items-center text-sm text-slate-500">
+              <span>{totalFleetPercent.toFixed(1)}% capacidade utilizada</span>
+              <span>Max total: {Math.floor(totalFleetMinutes/60)}h {totalFleetMinutes%60}m</span>
+            </div>
+          </div>
+
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
             {activeDriversStatus.map((d, i) => (
               <div key={i} className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm flex flex-col gap-2">
@@ -843,7 +917,7 @@ export default function RoutesPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {routes.map(route => (
+              {filteredRoutes.map(route => (
                 <tr key={route.id} className="hover:bg-slate-50/80 transition-colors group">
                   <td className="p-5">
                     <div className="flex flex-col">

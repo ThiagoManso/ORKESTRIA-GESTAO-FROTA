@@ -3,6 +3,7 @@ import { Package, MapPin, FileText, Send, CheckCircle, Calendar, Plus, Clock, Ch
 import { collection, addDoc, query, where, onSnapshot } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { ExternalRequest, SystemUser } from '../types';
+import FleetAvailabilityPanel from '../components/FleetAvailabilityPanel';
 
 interface InternalRequestsPageProps {
   currentUser: SystemUser;
@@ -146,6 +147,8 @@ export default function InternalRequestsPage({ currentUser }: InternalRequestsPa
           Novo Chamado
         </button>
       </div>
+
+      <FleetAvailabilityPanel targetDateStr={new Date().toLocaleDateString('pt-BR')} />
 
       {/* Tabela */}
       <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
