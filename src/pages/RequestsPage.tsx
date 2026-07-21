@@ -6,8 +6,10 @@ import { useMapsLibrary } from '@vis.gl/react-google-maps';
 import { addDoc, collection, doc, updateDoc, getDocs, query, where } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { RouteItem } from '../types';
+import { useRecurrenceEngine } from '../hooks/useRecurrenceEngine';
 
 export default function RequestsPage() {
+  useRecurrenceEngine(); // Runs globally for all users
   const { data: requests, update, remove, loading } = useCollection<ExternalRequest>('external_requests');
   const { data: routes } = useCollection<RouteItem>('routes');
   const [searchTerm, setSearchTerm] = useState('');

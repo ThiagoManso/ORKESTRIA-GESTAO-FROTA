@@ -14,6 +14,24 @@ export interface ExternalRequest {
   read: boolean;
   createdAt: string;
   userId?: string; // Links the request to an internal user
+  recurrenceId?: string; // If generated automatically
+}
+
+export interface RecurringRequest {
+  id: string;
+  type: 'coleta' | 'entrega';
+  address: string;
+  osNumber?: string;
+  orderNumber?: string;
+  requesterName: string;
+  contactPhone: string;
+  observations?: string;
+  userId: string;
+  frequency: 'daily' | 'weekly' | 'monthly';
+  weekDays?: number[]; // 0=Sunday, 1=Monday, ..., 6=Saturday
+  monthDay?: number; // 1-31
+  active: boolean;
+  createdAt: string;
 }
 
 export interface SystemUser {
