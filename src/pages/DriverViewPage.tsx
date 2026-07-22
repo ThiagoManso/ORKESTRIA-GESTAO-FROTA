@@ -1324,8 +1324,8 @@ export default function DriverViewPage({ driverId, driverName, driverStatus }: D
       )}
 
       {isPODModalOpen && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex flex-col justify-end z-50 animate-in fade-in">
-          <div className="bg-white rounded-t-3xl w-full max-h-[90vh] overflow-y-auto animate-in slide-in-from-bottom-full duration-300">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex flex-col justify-end z-[9999] animate-in fade-in">
+          <div className="bg-white rounded-t-3xl w-full max-h-[90vh] overflow-y-auto animate-in slide-in-from-bottom-full duration-300 relative z-[10000]">
             <div className="sticky top-0 bg-white/80 backdrop-blur-xl border-b border-slate-100 px-6 py-4 flex justify-between items-center rounded-t-3xl z-10">
               <h2 className="text-xl font-bold text-slate-800">Comprovante de Entrega</h2>
               <button 
