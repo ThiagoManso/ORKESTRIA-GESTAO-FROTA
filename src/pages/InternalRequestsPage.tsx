@@ -26,6 +26,7 @@ export default function InternalRequestsPage({ currentUser }: InternalRequestsPa
   // Form state
   const [type, setType] = useState<'coleta' | 'entrega'>('coleta');
   const [address, setAddress] = useState('');
+  const [dropoffAddress, setDropoffAddress] = useState('');
   const [observations, setObservations] = useState('');
   const [reference, setReference] = useState(''); // OS or Order number
   const [contactPhone, setContactPhone] = useState('');
@@ -98,6 +99,7 @@ export default function InternalRequestsPage({ currentUser }: InternalRequestsPa
   const resetForm = () => {
     setType('coleta');
     setAddress('');
+    setDropoffAddress('');
     setObservations('');
     setReference('');
     setContactPhone('');
@@ -146,6 +148,7 @@ export default function InternalRequestsPage({ currentUser }: InternalRequestsPa
         const newTemplate = {
           type,
           address,
+          dropoffAddress: type === 'coleta' ? dropoffAddress : '',
           observations,
           osNumber: type === 'coleta' ? reference : '',
           orderNumber: type === 'entrega' ? reference : '',
@@ -166,6 +169,7 @@ export default function InternalRequestsPage({ currentUser }: InternalRequestsPa
       const newRequest = {
         type,
         address,
+        dropoffAddress: type === 'coleta' ? dropoffAddress : '',
         observations,
         osNumber: type === 'coleta' ? reference : '',
         orderNumber: type === 'entrega' ? reference : '',
@@ -532,7 +536,7 @@ export default function InternalRequestsPage({ currentUser }: InternalRequestsPa
                   </div>
 
                   <div>
-                    <label className="block text-sm font-semibold text-slate-700 mb-1.5">Endereço Completo <span className="text-red-500">*</span></label>
+                    <label className="block text-sm font-semibold text-slate-700 mb-1.5">Endereço Completo {type === 'coleta' && '(Onde coletar)'} <span className="text-red-500">*</span></label>
                     <div className="relative">
                       <MapPin className="absolute left-3 top-3.5 text-slate-400" size={18} />
                       <input 
@@ -542,6 +546,20 @@ export default function InternalRequestsPage({ currentUser }: InternalRequestsPa
                       />
                     </div>
                   </div>
+
+                  {type === 'coleta' && (
+                    <div>
+                      <label className="block text-sm font-semibold text-slate-700 mb-1.5">Local de Entrega Pós-Coleta (Opcional)</label>
+                      <div className="relative">
+                        <MapPin className="absolute left-3 top-3.5 text-slate-400" size={18} />
+                        <input 
+                          type="text" value={dropoffAddress} onChange={(e) => setDropoffAddress(e.target.value)}
+                          className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:border-brand-cyan focus:ring-1 focus:ring-brand-cyan"
+                          placeholder="Ex: Galpão Central, Matriz, etc."
+                        />
+                      </div>
+                    </div>
+                  )}
 
                   <div>
                     <label className="block text-sm font-semibold text-slate-700 mb-1.5">Telefone para Contato</label>
