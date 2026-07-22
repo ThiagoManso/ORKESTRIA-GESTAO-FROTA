@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Filter, MapPin, Truck, CheckCircle, Clock, X, Map, RefreshCw, Trash2, Upload, Download, Package, AlertTriangle } from 'lucide-react';
+import { Search, Filter, MapPin, Truck, CheckCircle, Clock, X, Map, RefreshCw, Trash2, Upload, Download, Package, AlertTriangle, ArrowRight } from 'lucide-react';
 import { RouteItem } from '../types';
 import { useMapsLibrary } from '@vis.gl/react-google-maps';
 import { useCollection } from '../lib/useCollection';
@@ -1448,11 +1448,14 @@ export default function RoutesPage() {
                           }`} />
                           <div className="flex-1">
                             <div className="text-sm font-medium text-slate-800">{stop.address}</div>
-                            <div className="flex items-center justify-between">
-                              <div className="text-xs text-slate-500 mb-1">
-                                {stop.status === 'completed' && <span className="text-emerald-600">Entregue</span>}
-                                {stop.status === 'issue' && <span className="text-red-600 font-medium">Problema reportado</span>}
-                                {stop.status === 'pending' && <span>Pendente</span>}
+                            <div className="flex items-center justify-between mt-1">
+                              <div className="text-xs text-slate-500 mb-1 flex items-center gap-2">
+                                {stop.status === 'completed' && <span className="text-emerald-600 font-semibold">Entregue</span>}
+                                {stop.status === 'issue' && <span className="text-red-600 font-semibold">Problema reportado</span>}
+                                {stop.status === 'pending' && stop.type?.trim().toLowerCase() === 'coleta' && stop.collectionCompleted && (
+                                  <span className="text-blue-600 font-semibold bg-blue-50 px-2 py-0.5 rounded-md border border-blue-100">Em Trânsito (Coletado)</span>
+                                )}
+                                {stop.status === 'pending' && !(stop.type?.trim().toLowerCase() === 'coleta' && stop.collectionCompleted) && <span>Pendente</span>}
                               </div>
                               {stop.status === 'pending' && (
                                 <div className="flex flex-wrap gap-2 justify-end mt-2 sm:mt-0">
@@ -1486,8 +1489,21 @@ export default function RoutesPage() {
                                   <p className="text-sm text-red-800 mb-2 whitespace-pre-wrap">{stop.issueDescription}</p>
                                 )}
                                 {stop.issuePhotoUrl && (
-                                  <a href={stop.issuePhotoUrl} target="_blank" rel="noopener noreferrer" className="block max-w-[200px] overflow-hidden rounded-md border border-red-200">
+                                  <a href={stop.issuePhotoUrl} target="_blank" rel="noopener noreferrer" className="block max-w-[200px] overflow-hidden rounded-md border border-red-200 shadow-sm">
                                     <img src={stop.issuePhotoUrl} alt="Foto do problema" className="w-full h-auto object-cover hover:scale-105 transition-transform" />
+                                  </a>
+                                )}
+                              </div>
+                            )}
+                            {stop.status === 'completed' && stop.podData && (
+                              <div className="mt-2 bg-emerald-50/50 border border-emerald-100 rounded-lg p-3">
+                                <div className="text-xs font-semibold text-emerald-800 mb-2 border-b border-emerald-100/50 pb-1">Comprovante de Entrega</div>
+                                {stop.podData.receiverName && (
+                                  <p className="text-sm text-slate-700 mb-2"><span className="font-medium text-slate-500 text-xs">Recebedor:</span> {stop.podData.receiverName}</p>
+                                )}
+                                {stop.podData.photoUrl && (
+                                  <a href={stop.podData.photoUrl} target="_blank" rel="noopener noreferrer" className="block max-w-[200px] overflow-hidden rounded-md border border-emerald-200 shadow-sm">
+                                    <img src={stop.podData.photoUrl} alt="Foto do comprovante" className="w-full h-auto object-cover hover:scale-105 transition-transform" />
                                   </a>
                                 )}
                               </div>
