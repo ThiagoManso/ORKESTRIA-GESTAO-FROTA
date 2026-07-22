@@ -812,7 +812,7 @@ export default function DriverViewPage({ driverId, driverName, driverStatus }: D
                             onClick={() => handleCompleteStop(activeRoute, index)}
                             className="flex-1 flex items-center justify-center gap-2 py-3 bg-emerald-500 text-white rounded-xl font-semibold active:scale-[0.98] transition-transform shadow-sm"
                           >
-                            <CheckCircle size={18} /> {(stop.type === 'coleta' && stop.dropoffAddress && !stop.collectionCompleted) ? 'Coletado' : 'Entregue'}
+                            <CheckCircle size={18} /> {stop.type === 'coleta' ? (stop.collectionCompleted && stop.dropoffAddress ? 'Entregue' : 'Coletado') : 'Entregue'}
                           </button>
                           <button 
                             onClick={() => handleIssueStop(activeRoute, index)}
