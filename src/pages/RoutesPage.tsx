@@ -137,12 +137,19 @@ export default function RoutesPage() {
                 lng: req.lng || null
               });
             });
+
+            const firstDate = selectedReqs.find(r => r.scheduledDate && r.scheduledDate !== 'sem_data')?.scheduledDate;
+            let initialDepartureTime = '';
+            if (firstDate) {
+              initialDepartureTime = `${firstDate}T08:00`;
+            }
             
             setNewRoute(prev => ({
               ...prev,
               intermediates: newStops,
               intermediateMetadata: newMeta,
-              stops: Math.max(1, newStops.length)
+              stops: Math.max(1, newStops.length),
+              departureTime: initialDepartureTime
             }));
             
             setSelectedRequestIds(selectedIds);
@@ -1037,19 +1044,30 @@ export default function RoutesPage() {
                   )}
                 </div>
                 
-                <div>
-                  <div className="flex justify-between items-center mb-1.5">
-                    <label className="block text-sm font-semibold text-slate-700">Origem</label>
-                    <button type="button" onClick={() => setNewRoute({...newRoute, origin: matrizAddress})} className="text-xs text-indigo-600 hover:text-indigo-700 font-medium">Usar Matriz</button>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-700 mb-1.5">Data e Hora de Saída</label>
+                    <input 
+                      type="datetime-local" 
+                      value={newRoute.departureTime}
+                      onChange={(e) => setNewRoute({...newRoute, departureTime: e.target.value})}
+                      className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:border-primary focus:ring-1 focus:ring-primary shadow-sm"
+                    />
                   </div>
-                  <input 
-                    type="text" 
-                    required
-                    value={newRoute.origin}
-                    onChange={(e) => setNewRoute({...newRoute, origin: e.target.value})}
-                    className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:border-primary focus:ring-1 focus:ring-primary shadow-sm"
-                    placeholder="Endereço de partida"
-                  />
+                  <div>
+                    <div className="flex justify-between items-center mb-1.5">
+                      <label className="block text-sm font-semibold text-slate-700">Origem</label>
+                      <button type="button" onClick={() => setNewRoute({...newRoute, origin: matrizAddress})} className="text-xs text-indigo-600 hover:text-indigo-700 font-medium">Usar Matriz</button>
+                    </div>
+                    <input 
+                      type="text" 
+                      required
+                      value={newRoute.origin}
+                      onChange={(e) => setNewRoute({...newRoute, origin: e.target.value})}
+                      className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:border-primary focus:ring-1 focus:ring-primary shadow-sm"
+                      placeholder="Endereço de partida"
+                    />
+                  </div>
                 </div>
 
                 
@@ -1577,18 +1595,29 @@ export default function RoutesPage() {
                 </div>
                 
                 <div className="space-y-4">
-                  <div>
-                    <div className="flex justify-between items-center mb-1.5">
-                      <label className="block text-sm font-semibold text-slate-700">Origem</label>
-                      <button type="button" onClick={() => setEditingRoute({...editingRoute, origin: matrizAddress})} className="text-xs text-indigo-600 hover:text-indigo-700 font-medium">Usar Matriz</button>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-semibold text-slate-700 mb-1.5">Data e Hora de Saída</label>
+                      <input 
+                        type="datetime-local" 
+                        value={editingRoute.departureTime || ''}
+                        onChange={(e) => setEditingRoute({...editingRoute, departureTime: e.target.value})}
+                        className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:border-primary focus:ring-1 focus:ring-primary shadow-sm"
+                      />
                     </div>
-                    <input 
-                      type="text" 
-                      value={editingRoute.origin || ''}
-                      onChange={(e) => setEditingRoute({...editingRoute, origin: e.target.value})}
-                      className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:border-primary focus:ring-1 focus:ring-primary shadow-sm"
-                      placeholder="Endereço de partida"
-                    />
+                    <div>
+                      <div className="flex justify-between items-center mb-1.5">
+                        <label className="block text-sm font-semibold text-slate-700">Origem</label>
+                        <button type="button" onClick={() => setEditingRoute({...editingRoute, origin: matrizAddress})} className="text-xs text-indigo-600 hover:text-indigo-700 font-medium">Usar Matriz</button>
+                      </div>
+                      <input 
+                        type="text" 
+                        value={editingRoute.origin || ''}
+                        onChange={(e) => setEditingRoute({...editingRoute, origin: e.target.value})}
+                        className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:border-primary focus:ring-1 focus:ring-primary shadow-sm"
+                        placeholder="Endereço de partida"
+                      />
+                    </div>
                   </div>
 
                   <div className="max-h-48 overflow-y-auto pr-2 space-y-3 custom-scrollbar">
