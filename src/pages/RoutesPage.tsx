@@ -1495,15 +1495,15 @@ export default function RoutesPage() {
                                 )}
                               </div>
                             )}
-                            {stop.status === 'completed' && stop.podData && (
+                            {stop.status === 'completed' && (stop.podData || stop.dropoffPhotoUrl) && (
                               <div className="mt-2 bg-emerald-50/50 border border-emerald-100 rounded-lg p-3">
                                 <div className="text-xs font-semibold text-emerald-800 mb-2 border-b border-emerald-100/50 pb-1">Comprovante de Entrega</div>
-                                {stop.podData.receiverName && (
-                                  <p className="text-sm text-slate-700 mb-2"><span className="font-medium text-slate-500 text-xs">Recebedor:</span> {stop.podData.receiverName}</p>
+                                {(stop.podData?.receiverName || stop.dropoffReceiverName) && (
+                                  <p className="text-sm text-slate-700 mb-2"><span className="font-medium text-slate-500 text-xs">Recebedor:</span> {stop.podData?.receiverName || stop.dropoffReceiverName}</p>
                                 )}
-                                {stop.podData.photoUrl && (
-                                  <a href={stop.podData.photoUrl} target="_blank" rel="noopener noreferrer" className="block max-w-[200px] overflow-hidden rounded-md border border-emerald-200 shadow-sm">
-                                    <img src={stop.podData.photoUrl} alt="Foto do comprovante" className="w-full h-auto object-cover hover:scale-105 transition-transform" />
+                                {(stop.podData?.photoUrl || stop.dropoffPhotoUrl) && (
+                                  <a href={stop.podData?.photoUrl || stop.dropoffPhotoUrl} target="_blank" rel="noopener noreferrer" className="block max-w-[200px] overflow-hidden rounded-md border border-emerald-200 shadow-sm">
+                                    <img src={stop.podData?.photoUrl || stop.dropoffPhotoUrl} alt="Foto do comprovante" className="w-full h-auto object-cover hover:scale-105 transition-transform" />
                                   </a>
                                 )}
                               </div>

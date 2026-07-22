@@ -214,9 +214,9 @@ export default function DriverViewPage({ driverId, driverName, driverStatus }: D
       setIsPODModalOpen(false);
       setPodReceiverName('');
       setPodFile(null);
-    } catch (e) {
+    } catch (e: any) {
       console.error(e);
-      alert("Erro ao registrar entrega.");
+      alert("Erro ao registrar entrega: " + (e.message || e.toString()));
     } finally {
       setIsSubmittingPOD(false);
     }
