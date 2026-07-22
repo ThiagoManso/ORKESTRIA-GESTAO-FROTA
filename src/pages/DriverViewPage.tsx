@@ -374,14 +374,14 @@ export default function DriverViewPage({ driverId, driverName, driverStatus }: D
     if (!route.stopDetails) return;
     
     const stop = route.stopDetails[stopIndex];
-    if (stop.type === 'coleta' && stop.dropoffAddress && !stop.collectionCompleted) {
+    if (stop.type?.toLowerCase() === 'coleta' && !stop.collectionCompleted) {
       const newStopDetails = [...route.stopDetails];
       newStopDetails[stopIndex] = { ...newStopDetails[stopIndex], collectionCompleted: true };
       await update(route.id, { stopDetails: newStopDetails });
       return;
     }
 
-    if (stop.type === 'coleta' && stop.dropoffAddress && stop.collectionCompleted) {
+    if (stop.type?.toLowerCase() === 'coleta' && stop.collectionCompleted) {
       setCurrentPODStopIndex(stopIndex);
       setIsPODModalOpen(true);
       return;
@@ -755,6 +755,7 @@ export default function DriverViewPage({ driverId, driverName, driverStatus }: D
           {activeRoute.stopDetails?.map((stop, index) => {
             const isCompleted = stop.status === 'completed';
             const isIssue = stop.status === 'issue';
+            const isColeta = stop.type?.toLowerCase() === 'coleta';
             
             return (
               <div key={stop.id || index} className={`bg-white rounded-2xl p-4 shadow-sm border ${isCompleted ? 'border-emerald-200 bg-emerald-50/30' : isIssue ? 'border-red-200 bg-red-50/30' : 'border-slate-200'}`}>
@@ -767,10 +768,10 @@ export default function DriverViewPage({ driverId, driverName, driverStatus }: D
                   <div className="flex-1 min-w-0">
                     <div className="mb-1">
                       <span className="text-xs font-bold px-2 py-0.5 rounded bg-slate-100 text-slate-600 mb-1 inline-block uppercase">
-                        {stop.type === 'coleta' ? (stop.collectionCompleted ? 'ENTREGA PÓS-COLETA' : 'COLETA') : 'ENTREGA'}
+                        {isColeta ? (stop.collectionCompleted ? 'ENTREGA PÓS-COLETA' : 'COLETA') : 'ENTREGA'}
                       </span>
                       <h3 className={`font-semibold text-base ${isCompleted ? 'text-emerald-900 line-through opacity-70' : isIssue ? 'text-red-900' : 'text-slate-800'}`}>
-                        {stop.collectionCompleted && stop.dropoffAddress ? stop.dropoffAddress : stop.address}
+                        {isColeta && stop.collectionCompleted ? (stop.dropoffAddress || 'Retornar à Base (Matriz)') : stop.address}
                       </h3>
                     </div>
                     
@@ -802,17 +803,17 @@ export default function DriverViewPage({ driverId, driverName, driverStatus }: D
                     {!isCompleted && !isIssue && (
                       <div className="mt-4 flex flex-col gap-2">
                         <button 
-                          onClick={() => handleNavigate(stop.collectionCompleted && stop.dropoffAddress ? stop.dropoffAddress : stop.address)}
+                          onClick={() => handleNavigate(isColeta && stop.collectionCompleted ? (stop.dropoffAddress || 'Retornar à Base (Matriz)') : stop.address)}
                           className="flex items-center justify-center gap-2 w-full py-3 bg-blue-50 text-blue-700 rounded-xl font-semibold active:scale-[0.98] transition-transform"
                         >
-                          <Navigation size={18} /> {stop.collectionCompleted && stop.dropoffAddress ? 'Navegar para Entrega' : 'Navegar'}
+                          <Navigation size={18} /> {isColeta && stop.collectionCompleted ? 'Navegar para Entrega' : 'Navegar'}
                         </button>
                         <div className="flex gap-2 mt-2">
                           <button 
                             onClick={() => handleCompleteStop(activeRoute, index)}
                             className="flex-1 flex items-center justify-center gap-2 py-3 bg-emerald-500 text-white rounded-xl font-semibold active:scale-[0.98] transition-transform shadow-sm"
                           >
-                            <CheckCircle size={18} /> {stop.type === 'coleta' ? (stop.collectionCompleted && stop.dropoffAddress ? 'Entregue' : 'Coletado') : 'Entregue'}
+                            <CheckCircle size={18} /> {isColeta ? (stop.collectionCompleted ? 'Entregue' : 'Coletado') : 'Entregue'}
                           </button>
                           <button 
                             onClick={() => handleIssueStop(activeRoute, index)}

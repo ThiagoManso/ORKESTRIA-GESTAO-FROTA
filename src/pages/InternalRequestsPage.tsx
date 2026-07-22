@@ -331,6 +331,12 @@ export default function InternalRequestsPage({ currentUser }: InternalRequestsPa
                       </td>
                       <td className="py-4 px-6 text-slate-600 max-w-xs truncate" title={req.address}>
                         {req.address}
+                        {req.type === 'coleta' && req.dropoffAddress && (
+                          <div className="text-xs text-slate-400 mt-1" title={req.dropoffAddress}>
+                            <MapPin size={10} className="inline mr-1" />
+                            Pós-Coleta: {req.dropoffAddress}
+                          </div>
+                        )}
                       </td>
                       <td className="py-4 px-6 text-slate-600 font-medium">
                         {formatScheduledDate(req.scheduledDate)}
@@ -379,6 +385,12 @@ export default function InternalRequestsPage({ currentUser }: InternalRequestsPa
                   <div className="text-sm text-slate-600 line-clamp-2">
                     <MapPin size={14} className="inline mr-1 text-slate-400" />
                     {req.address}
+                    {req.type === 'coleta' && req.dropoffAddress && (
+                      <div className="text-xs text-slate-400 mt-1">
+                        <MapPin size={10} className="inline mr-1" />
+                        Pós-Coleta: {req.dropoffAddress}
+                      </div>
+                    )}
                   </div>
                   
                   <div className="flex justify-between items-center text-xs text-slate-500 mt-1 pt-2 border-t border-slate-50">
