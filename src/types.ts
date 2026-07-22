@@ -4,6 +4,7 @@ export interface ExternalRequest {
   id: string;
   type: 'coleta' | 'entrega';
   address: string;
+  dropoffAddress?: string;
   osNumber?: string;
   orderNumber?: string;
   requesterName: string;
@@ -61,6 +62,11 @@ export interface RouteItem {
   stopDetails?: {
     id: string;
     address: string;
+    type?: 'coleta' | 'entrega';
+    dropoffAddress?: string;
+    collectionCompleted?: boolean;
+    dropoffReceiverName?: string;
+    dropoffPhotoUrl?: string;
     status: 'pending' | 'completed' | 'issue';
     orderNumber?: string;
     customerName?: string;

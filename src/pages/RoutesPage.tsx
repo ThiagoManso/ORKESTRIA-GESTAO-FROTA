@@ -134,7 +134,9 @@ export default function RoutesPage() {
                 observation: req.observations || '',
                 externalRequestId: req.id,
                 lat: req.lat || null,
-                lng: req.lng || null
+                lng: req.lng || null,
+                type: req.type || 'entrega',
+                dropoffAddress: req.dropoffAddress || ''
               });
             });
 
@@ -323,7 +325,9 @@ export default function RoutesPage() {
             orderNumber: cols[1] || '',
             customerName: cols[2] || '',
             customerPhone: cols[3] || '',
-            observation: cols[4] || ''
+            observation: cols[4] || '',
+            type: 'entrega',
+            dropoffAddress: ''
           });
         }
       }
@@ -454,6 +458,8 @@ export default function RoutesPage() {
       externalRequestId: item.meta.externalRequestId || '',
       lat: item.meta.lat || null,
       lng: item.meta.lng || null,
+      type: item.meta.type || 'entrega',
+      dropoffAddress: item.meta.dropoffAddress || ''
     }));
 
     if (newRoute.destination && newRoute.destination.trim() !== '' && !newRoute.returnToMatriz) {
@@ -555,6 +561,9 @@ export default function RoutesPage() {
         externalRequestId: item.meta.externalRequestId || existingStop?.externalRequestId || '',
         lat: item.meta.lat || existingStop?.lat || null,
         lng: item.meta.lng || existingStop?.lng || null,
+        type: item.meta.type || (existingStop as any)?.type || 'entrega',
+        dropoffAddress: item.meta.dropoffAddress || (existingStop as any)?.dropoffAddress || '',
+        collectionCompleted: (existingStop as any)?.collectionCompleted || false,
       };
     });
 
@@ -1917,7 +1926,11 @@ export default function RoutesPage() {
                       customerName: req.requesterName || '',
                       customerPhone: req.contactPhone || '',
                       observation: req.observations || '',
-                      externalRequestId: req.id
+                      externalRequestId: req.id,
+                      type: req.type || 'entrega',
+                      dropoffAddress: req.dropoffAddress || '',
+                      lat: req.lat || null,
+                      lng: req.lng || null
                     });
                   });
                   

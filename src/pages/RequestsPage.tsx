@@ -30,6 +30,7 @@ export default function RequestsPage() {
   const [manualForm, setManualForm] = useState({
     type: 'entrega' as 'coleta' | 'entrega',
     address: '',
+    dropoffAddress: '',
     requesterName: '',
     contactPhone: '',
     osNumber: '',
@@ -196,7 +197,8 @@ export default function RequestsPage() {
     setEditingId(req.id);
     setManualForm({
       type: req.type as 'coleta' | 'entrega',
-      address: req.address,
+      address: req.address || '',
+      dropoffAddress: req.dropoffAddress || '',
       requesterName: req.requesterName || '',
       contactPhone: req.contactPhone || '',
       osNumber: req.osNumber || '',
@@ -248,6 +250,7 @@ export default function RequestsPage() {
     setManualForm({
       type: 'entrega',
       address: '',
+      dropoffAddress: '',
       requesterName: '',
       contactPhone: '',
       osNumber: '',
@@ -778,7 +781,7 @@ export default function RequestsPage() {
               </div>
 
               <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-2">Endereço Completo</label>
+                <label className="block text-sm font-semibold text-slate-700 mb-2">Endereço Completo {manualForm.type === 'coleta' && '(Onde coletar)'}</label>
                 <input 
                   type="text"
                   required
@@ -788,6 +791,19 @@ export default function RequestsPage() {
                   className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:border-brand-cyan focus:ring-1 focus:ring-brand-cyan outline-none"
                 />
               </div>
+
+              {manualForm.type === 'coleta' && (
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 mb-2">Local de Entrega Pós-Coleta (Opcional)</label>
+                  <input 
+                    type="text"
+                    value={manualForm.dropoffAddress}
+                    onChange={(e) => setManualForm({...manualForm, dropoffAddress: e.target.value})}
+                    placeholder="Ex: Galpão Central, Matriz, etc."
+                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:border-brand-cyan focus:ring-1 focus:ring-brand-cyan outline-none"
+                  />
+                </div>
+              )}
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>

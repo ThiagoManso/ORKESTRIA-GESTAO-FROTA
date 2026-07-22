@@ -45,6 +45,12 @@ export default function DriverViewPage({ driverId, driverName, driverStatus }: D
   const [summaryRoute, setSummaryRoute] = useState<RouteItem | null>(null);
   const [showEndOfDay, setShowEndOfDay] = useState(false);
   
+  const [isPODModalOpen, setIsPODModalOpen] = useState(false);
+  const [currentPODStopIndex, setCurrentPODStopIndex] = useState<number | null>(null);
+  const [podReceiverName, setPodReceiverName] = useState('');
+  const [podFile, setPodFile] = useState<File | null>(null);
+  const [isSubmittingPOD, setIsSubmittingPOD] = useState(false);
+
   const [navTarget, setNavTarget] = useState<string | null>(null);
 
   const handleNavigate = (address: string) => {
@@ -141,6 +147,78 @@ export default function DriverViewPage({ driverId, driverName, driverStatus }: D
     } catch (e) {
       console.error(e);
       alert("Erro ao iniciar o dia");
+    }
+  };
+
+  const compressImage = (file: File, maxWidth = 800): Promise<Blob> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = (event) => {
+        const img = new Image();
+        img.src = event.target?.result as string;
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          const ratio = maxWidth / img.width;
+          canvas.width = maxWidth;
+          canvas.height = img.height * ratio;
+          const ctx = canvas.getContext('2d');
+          ctx?.drawImage(img, 0, 0, canvas.width, canvas.height);
+          canvas.toBlob((blob) => {
+            if (blob) resolve(blob);
+            else reject(new Error('Canvas to Blob failed'));
+          }, 'image/jpeg', 0.7);
+        };
+      };
+      reader.onerror = error => reject(error);
+    });
+  };
+
+  const submitPOD = async () => {
+    if (!activeRoute || currentPODStopIndex === null || !activeRoute.stopDetails) return;
+    if (!podReceiverName.trim() || !podFile) {
+      alert("Nome e foto são obrigatórios.");
+      return;
+    }
+    
+    setIsSubmittingPOD(true);
+    try {
+      const compressedBlob = await compressImage(podFile);
+      const fileRef = ref(storage, `pod/${activeRoute.id}_${currentPODStopIndex}_${Date.now()}.jpg`);
+      await uploadBytes(fileRef, compressedBlob);
+      const photoUrl = await getDownloadURL(fileRef);
+
+      const newStopDetails = [...activeRoute.stopDetails];
+      newStopDetails[currentPODStopIndex] = { 
+        ...newStopDetails[currentPODStopIndex], 
+        status: 'completed',
+        dropoffPhotoUrl: photoUrl,
+        dropoffReceiverName: podReceiverName
+      };
+
+      const allCompleted = newStopDetails.length > 0 && newStopDetails.every(s => s.status === 'completed' || s.status === 'issue');
+      
+      if (allCompleted) {
+        setSummaryRoute({ ...activeRoute, stopDetails: newStopDetails, status: 'completed' });
+      }
+
+      await update(activeRoute.id, { 
+        stopDetails: newStopDetails,
+        status: allCompleted ? 'completed' : (activeRoute.status === 'completed' ? 'in_progress' : activeRoute.status)
+      });
+      
+      if (newStopDetails[currentPODStopIndex].externalRequestId) {
+        await updateExternalRequest(newStopDetails[currentPODStopIndex].externalRequestId, { status: 'completed' }).catch(console.error);
+      }
+      
+      setIsPODModalOpen(false);
+      setPodReceiverName('');
+      setPodFile(null);
+    } catch (e) {
+      console.error(e);
+      alert("Erro ao registrar entrega.");
+    } finally {
+      setIsSubmittingPOD(false);
     }
   };
 
@@ -294,6 +372,21 @@ export default function DriverViewPage({ driverId, driverName, driverStatus }: D
 
   const handleCompleteStop = async (route: RouteItem, stopIndex: number) => {
     if (!route.stopDetails) return;
+    
+    const stop = route.stopDetails[stopIndex];
+    if (stop.type === 'coleta' && stop.dropoffAddress && !stop.collectionCompleted) {
+      const newStopDetails = [...route.stopDetails];
+      newStopDetails[stopIndex] = { ...newStopDetails[stopIndex], collectionCompleted: true };
+      await update(route.id, { stopDetails: newStopDetails });
+      return;
+    }
+
+    if (stop.type === 'coleta' && stop.dropoffAddress && stop.collectionCompleted) {
+      setCurrentPODStopIndex(stopIndex);
+      setIsPODModalOpen(true);
+      return;
+    }
+
     const newStopDetails = [...route.stopDetails];
     newStopDetails[stopIndex] = { ...newStopDetails[stopIndex], status: 'completed' };
     
@@ -672,9 +765,14 @@ export default function DriverViewPage({ driverId, driverName, driverStatus }: D
                     {isCompleted ? <CheckCircle size={14} /> : isIssue ? <AlertTriangle size={14} /> : index + 1}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <h3 className={`font-semibold text-base mb-1 ${isCompleted ? 'text-emerald-900 line-through opacity-70' : isIssue ? 'text-red-900' : 'text-slate-800'}`}>
-                      {stop.address}
-                    </h3>
+                    <div className="mb-1">
+                      <span className="text-xs font-bold px-2 py-0.5 rounded bg-slate-100 text-slate-600 mb-1 inline-block uppercase">
+                        {stop.type === 'coleta' ? (stop.collectionCompleted ? 'ENTREGA PÓS-COLETA' : 'COLETA') : 'ENTREGA'}
+                      </span>
+                      <h3 className={`font-semibold text-base ${isCompleted ? 'text-emerald-900 line-through opacity-70' : isIssue ? 'text-red-900' : 'text-slate-800'}`}>
+                        {stop.collectionCompleted && stop.dropoffAddress ? stop.dropoffAddress : stop.address}
+                      </h3>
+                    </div>
                     
                     {(stop.orderNumber || stop.customerName || stop.customerPhone || stop.observation) && (
                       <div className={`mt-3 p-3 rounded-xl text-sm ${isCompleted ? 'bg-emerald-100/50' : isIssue ? 'bg-red-100/50' : 'bg-slate-50 border border-slate-100'}`}>
@@ -704,17 +802,17 @@ export default function DriverViewPage({ driverId, driverName, driverStatus }: D
                     {!isCompleted && !isIssue && (
                       <div className="mt-4 flex flex-col gap-2">
                         <button 
-                          onClick={() => handleNavigate(stop.address)}
+                          onClick={() => handleNavigate(stop.collectionCompleted && stop.dropoffAddress ? stop.dropoffAddress : stop.address)}
                           className="flex items-center justify-center gap-2 w-full py-3 bg-blue-50 text-blue-700 rounded-xl font-semibold active:scale-[0.98] transition-transform"
                         >
-                          <Navigation size={18} /> Navegar
+                          <Navigation size={18} /> {stop.collectionCompleted && stop.dropoffAddress ? 'Navegar para Entrega' : 'Navegar'}
                         </button>
                         <div className="flex gap-2 mt-2">
                           <button 
                             onClick={() => handleCompleteStop(activeRoute, index)}
                             className="flex-1 flex items-center justify-center gap-2 py-3 bg-emerald-500 text-white rounded-xl font-semibold active:scale-[0.98] transition-transform shadow-sm"
                           >
-                            <CheckCircle size={18} /> Entregue
+                            <CheckCircle size={18} /> {(stop.type === 'coleta' && stop.dropoffAddress && !stop.collectionCompleted) ? 'Coletado' : 'Entregue'}
                           </button>
                           <button 
                             onClick={() => handleIssueStop(activeRoute, index)}
@@ -1218,6 +1316,81 @@ export default function DriverViewPage({ driverId, driverName, driverStatus }: D
                 className="px-5 py-3.5 bg-white border border-slate-200 text-slate-600 rounded-xl font-bold active:scale-[0.98] transition-transform hover:bg-slate-50 flex items-center justify-center"
               >
                 <XCircle size={18} />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isPODModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex flex-col justify-end z-50 animate-in fade-in">
+          <div className="bg-white rounded-t-3xl w-full max-h-[90vh] overflow-y-auto animate-in slide-in-from-bottom-full duration-300">
+            <div className="sticky top-0 bg-white/80 backdrop-blur-xl border-b border-slate-100 px-6 py-4 flex justify-between items-center rounded-t-3xl z-10">
+              <h2 className="text-xl font-bold text-slate-800">Comprovante de Entrega</h2>
+              <button 
+                onClick={() => setIsPODModalOpen(false)}
+                className="p-2 -mr-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full transition-colors"
+              >
+                <X size={24} />
+              </button>
+            </div>
+            
+            <div className="p-6 space-y-6">
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-2">Nome do Recebedor</label>
+                <input 
+                  type="text" 
+                  required
+                  value={podReceiverName}
+                  onChange={(e) => setPodReceiverName(e.target.value)}
+                  placeholder="Quem recebeu a mercadoria?"
+                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:border-brand-cyan focus:ring-1 focus:ring-brand-cyan outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-2">Foto Comprovante</label>
+                <div className="flex gap-4">
+                  <div className="flex-1">
+                    <input 
+                      type="file" 
+                      accept="image/*"
+                      capture="environment"
+                      id="pod-photo"
+                      className="hidden"
+                      onChange={(e) => {
+                        if (e.target.files && e.target.files[0]) {
+                          setPodFile(e.target.files[0]);
+                        }
+                      }}
+                    />
+                    <label 
+                      htmlFor="pod-photo"
+                      className="flex items-center justify-center gap-2 w-full py-3 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-xl font-semibold active:scale-[0.98] transition-transform cursor-pointer"
+                    >
+                      <Camera size={20} /> Tirar Foto
+                    </label>
+                  </div>
+                </div>
+                {podFile && (
+                  <div className="mt-3 text-sm text-emerald-600 flex items-center gap-1.5 font-medium">
+                    <CheckCircle size={16} /> Foto anexada: {podFile.name}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="p-6 border-t border-slate-100 bg-slate-50/50">
+              <button
+                onClick={submitPOD}
+                disabled={isSubmittingPOD || !podReceiverName.trim() || !podFile}
+                className="w-full flex justify-center items-center gap-2 bg-emerald-500 text-white font-bold py-3.5 px-4 rounded-xl hover:bg-emerald-600 active:scale-[0.98] transition-transform disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
+              >
+                {isSubmittingPOD ? (
+                  <><Loader2 size={20} className="animate-spin" /> Salvando...</>
+                ) : (
+                  <><CheckCircle size={20} /> Confirmar Entrega</>
+                )}
               </button>
             </div>
           </div>
