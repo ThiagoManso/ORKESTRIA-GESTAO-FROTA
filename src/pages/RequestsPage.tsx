@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useCollection } from '../lib/useCollection';
 import { ExternalRequest } from '../types';
-import { Package, MapPin, CheckCircle, Clock, Search, Trash2, Calendar, Upload, Download, Plus, LayoutGrid, List as ListIcon, X, Edit2 } from 'lucide-react';
+import { Package, MapPin, CheckCircle, Clock, Search, Trash2, Calendar, Upload, Download, Plus, LayoutGrid, List as ListIcon, X, Edit2, MessageCircle } from 'lucide-react';
 import { useMapsLibrary } from '@vis.gl/react-google-maps';
 import { addDoc, collection, doc, updateDoc, getDocs, query, where } from 'firebase/firestore';
 import { db } from '../lib/firebase';
@@ -57,11 +57,15 @@ export default function RequestsPage() {
   }
 
   const filteredRequests = requests?.filter(req => {
+    const searchLower = searchTerm.toLowerCase();
     const matchesSearch = 
-      req.address.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      req.requesterName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      req.osNumber?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      req.orderNumber?.toLowerCase().includes(searchTerm.toLowerCase());
+      req.address.toLowerCase().includes(searchLower) ||
+      (req.requesterName || '').toLowerCase().includes(searchLower) ||
+      (req.osNumber || '').toLowerCase().includes(searchLower) ||
+      (req.orderNumber || '').toLowerCase().includes(searchLower) ||
+      (req.type || '').toLowerCase().includes(searchLower) ||
+      (req.contactPhone || '').toLowerCase().includes(searchLower) ||
+      (req.observations || '').toLowerCase().includes(searchLower);
     
     const matchesStatus = filterStatus === 'all' ? req.status !== 'completed' : req.status === filterStatus;
     const matchesDate = !filterDate || req.scheduledDate === filterDate;
@@ -467,6 +471,32 @@ export default function RequestsPage() {
     }
   };
 
+  const handleGenerateWhatsAppMessage = (req: ExternalRequest) => {
+    let statusText = '';
+    switch(req.status) {
+      case 'pending': statusText = 'está *pendente de roteirização*. ⏳'; break;
+      case 'on_route': statusText = 'está *em rota* (saiu para execução). 🚚'; break;
+      case 'completed': statusText = 'foi *concluída com sucesso*. ✅'; break;
+      default: statusText = `está com status *${req.status}*.`;
+    }
+    
+    const tipo = req.type === 'coleta' ? 'Coleta' : 'Entrega';
+    const id = req.orderNumber || req.osNumber || req.id.slice(-6);
+    
+    const text = `Olá${req.requesterName ? ` *${req.requesterName}*` : ''}!\nInformamos que sua demanda de *${tipo}* (Ref: ${id}) no endereço _${req.address}_ ${statusText}`;
+    
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(text).then(() => {
+        alert('Mensagem copiada para a área de transferência! Cole no seu WhatsApp.');
+      }).catch(err => {
+        console.error('Erro ao copiar', err);
+        alert('Erro ao copiar a mensagem.');
+      });
+    } else {
+      alert('Seu navegador não suporta a cópia automática. Mensagem: \n\n' + text);
+    }
+  };
+
   const formatDateLabel = (dateStr: string) => {
     if (dateStr === 'sem_data') return 'Sem Data Agendada';
     const d = new Date(dateStr + 'T12:00:00');
@@ -520,7 +550,7 @@ export default function RequestsPage() {
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
             <input 
               type="text" 
-              placeholder="Buscar por endereço, nome ou pedido..."
+              placeholder="Buscar por endereço, nome, pedido, tipo, telefone ou observação..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:border-brand-cyan focus:ring-1 focus:ring-brand-cyan outline-none transition-all shadow-sm"
@@ -663,6 +693,13 @@ export default function RequestsPage() {
                                       <X size={16} />
                                     </button>
                                   )}
+                                  <button 
+                                    onClick={(e) => { e.stopPropagation(); handleGenerateWhatsAppMessage(request); }}
+                                    className="p-1.5 text-slate-400 hover:text-emerald-500 hover:bg-emerald-50 rounded-lg transition-colors"
+                                    title="Copiar mensagem p/ WhatsApp"
+                                  >
+                                    <MessageCircle size={16} />
+                                  </button>
                                   <button 
                                     onClick={(e) => handleEditClick(e, request)}
                                     className="p-1.5 text-slate-400 hover:text-blue-500 hover:bg-blue-50 rounded-lg transition-colors"
