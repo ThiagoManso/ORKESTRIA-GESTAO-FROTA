@@ -371,23 +371,31 @@ export default function DriverViewPage({ driverId, driverName, driverStatus }: D
   };
 
   const handleCompleteStop = async (route: RouteItem, stopIndex: number) => {
-    if (!route.stopDetails) return;
-    
-    const stop = route.stopDetails[stopIndex];
-    if (stop.type?.toLowerCase() === 'coleta' && !stop.collectionCompleted) {
+    try {
+      if (!route || !route.stopDetails) {
+        alert("Erro: Rota ou stopDetails não encontrados");
+        return;
+      }
+      
+      const stop = route.stopDetails[stopIndex];
+      const isTypeColeta = stop.type?.trim().toLowerCase() === 'coleta';
+      
+      if (isTypeColeta && !stop.collectionCompleted) {
+        const newStopDetails = [...route.stopDetails];
+        newStopDetails[stopIndex] = { ...newStopDetails[stopIndex], collectionCompleted: true };
+        await update(route.id, { stopDetails: newStopDetails });
+        return;
+      }
+
+      if (isTypeColeta && stop.collectionCompleted) {
+        alert("Chamando modal de foto! Index: " + stopIndex);
+        setCurrentPODStopIndex(stopIndex);
+        setIsPODModalOpen(true);
+        return;
+      }
+
+      alert("Finalizando parada normalmente (não coleta)");
       const newStopDetails = [...route.stopDetails];
-      newStopDetails[stopIndex] = { ...newStopDetails[stopIndex], collectionCompleted: true };
-      await update(route.id, { stopDetails: newStopDetails });
-      return;
-    }
-
-    if (stop.type?.toLowerCase() === 'coleta' && stop.collectionCompleted) {
-      setCurrentPODStopIndex(stopIndex);
-      setIsPODModalOpen(true);
-      return;
-    }
-
-    const newStopDetails = [...route.stopDetails];
     newStopDetails[stopIndex] = { ...newStopDetails[stopIndex], status: 'completed' };
     
     const allCompleted = newStopDetails.length > 0 && newStopDetails.every(s => s.status === 'completed' || s.status === 'issue');
@@ -401,8 +409,11 @@ export default function DriverViewPage({ driverId, driverName, driverStatus }: D
       status: allCompleted ? 'completed' : (route.status === 'completed' ? 'in_progress' : route.status)
     });
     
-    if (newStopDetails[stopIndex].externalRequestId) {
-      await updateExternalRequest(newStopDetails[stopIndex].externalRequestId, { status: 'completed' }).catch(console.error);
+      if (newStopDetails[stopIndex].externalRequestId) {
+        await updateExternalRequest(newStopDetails[stopIndex].externalRequestId, { status: 'completed' }).catch(console.error);
+      }
+    } catch (err: any) {
+      alert("Erro no botão: " + err.message);
     }
   };
 
@@ -755,7 +766,7 @@ export default function DriverViewPage({ driverId, driverName, driverStatus }: D
           {activeRoute.stopDetails?.map((stop, index) => {
             const isCompleted = stop.status === 'completed';
             const isIssue = stop.status === 'issue';
-            const isColeta = stop.type?.toLowerCase() === 'coleta';
+            const isColeta = stop.type?.trim().toLowerCase() === 'coleta';
             
             return (
               <div key={stop.id || index} className={`bg-white rounded-2xl p-4 shadow-sm border ${isCompleted ? 'border-emerald-200 bg-emerald-50/30' : isIssue ? 'border-red-200 bg-red-50/30' : 'border-slate-200'}`}>
