@@ -373,7 +373,6 @@ export default function DriverViewPage({ driverId, driverName, driverStatus }: D
   const handleCompleteStop = async (route: RouteItem, stopIndex: number) => {
     try {
       if (!route || !route.stopDetails) {
-        alert("Erro: Rota ou stopDetails não encontrados");
         return;
       }
       
@@ -388,15 +387,13 @@ export default function DriverViewPage({ driverId, driverName, driverStatus }: D
       }
 
       if (isTypeColeta && stop.collectionCompleted) {
-        alert("Chamando modal de foto! Index: " + stopIndex);
         setCurrentPODStopIndex(stopIndex);
         setIsPODModalOpen(true);
         return;
       }
 
-      alert("Finalizando parada normalmente (não coleta)");
       const newStopDetails = [...route.stopDetails];
-    newStopDetails[stopIndex] = { ...newStopDetails[stopIndex], status: 'completed' };
+      newStopDetails[stopIndex] = { ...newStopDetails[stopIndex], status: 'completed' };
     
     const allCompleted = newStopDetails.length > 0 && newStopDetails.every(s => s.status === 'completed' || s.status === 'issue');
     
@@ -412,8 +409,8 @@ export default function DriverViewPage({ driverId, driverName, driverStatus }: D
       if (newStopDetails[stopIndex].externalRequestId) {
         await updateExternalRequest(newStopDetails[stopIndex].externalRequestId, { status: 'completed' }).catch(console.error);
       }
-    } catch (err: any) {
-      alert("Erro no botão: " + err.message);
+    } catch (err) {
+      console.error(err);
     }
   };
 
@@ -1335,8 +1332,8 @@ export default function DriverViewPage({ driverId, driverName, driverStatus }: D
       )}
 
       {isPODModalOpen && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex flex-col justify-end z-[9999] animate-in fade-in">
-          <div className="bg-white rounded-t-3xl w-full max-h-[90vh] overflow-y-auto animate-in slide-in-from-bottom-full duration-300 relative z-[10000]">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex flex-col justify-end animate-in fade-in" style={{ zIndex: 9999 }}>
+          <div className="bg-white rounded-t-3xl w-full max-h-[90vh] overflow-y-auto animate-in slide-in-from-bottom-full duration-300 relative" style={{ zIndex: 10000 }}>
             <div className="sticky top-0 bg-white/80 backdrop-blur-xl border-b border-slate-100 px-6 py-4 flex justify-between items-center rounded-t-3xl z-10">
               <h2 className="text-xl font-bold text-slate-800">Comprovante de Entrega</h2>
               <button 
