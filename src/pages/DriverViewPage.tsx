@@ -122,6 +122,12 @@ export default function DriverViewPage({ driverId, driverName, driverStatus }: D
 
   const submitChecklist = async () => {
     if (!driverId || !selectedVehicle) return;
+    
+    if (checklistInitialKm < selectedVehicle.initialKm) {
+      alert(`Erro: O KM inicial inserido (${checklistInitialKm}) não pode ser menor que o último registrado no veículo (${selectedVehicle.initialKm}).`);
+      return;
+    }
+
     try {
       const todayStr = new Date().toISOString().split('T')[0];
       await addDailyLog({
@@ -163,7 +169,29 @@ export default function DriverViewPage({ driverId, driverName, driverStatus }: D
           canvas.width = maxWidth;
           canvas.height = img.height * ratio;
           const ctx = canvas.getContext('2d');
-          ctx?.drawImage(img, 0, 0, canvas.width, canvas.height);
+          
+          if (!ctx) {
+            reject(new Error('Canvas context null'));
+            return;
+          }
+          
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          
+          // Watermark Anti-Fraude (Data, Hora, GPS)
+          const loc = lastLocationRef.current;
+          const dateStr = new Date().toLocaleString('pt-BR');
+          const coordsStr = loc ? `Lat: ${loc.lat.toFixed(6)}, Lng: ${loc.lng.toFixed(6)}` : 'GPS Indisponível';
+          const watermarkText = `${dateStr} | ${coordsStr}`;
+          
+          // Fundo escuro para destacar o texto
+          ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+          ctx.fillRect(0, canvas.height - 40, canvas.width, 40);
+          
+          // Texto branco
+          ctx.font = 'bold 14px sans-serif';
+          ctx.fillStyle = 'white';
+          ctx.fillText(watermarkText, 15, canvas.height - 15);
+
           canvas.toBlob((blob) => {
             if (blob) resolve(blob);
             else reject(new Error('Canvas to Blob failed'));
@@ -1082,6 +1110,38 @@ export default function DriverViewPage({ driverId, driverName, driverStatus }: D
                     await updateVehicle(activeLog.vehicleId, {
                       initialKm: finalKmNum
                     });
+                    
+                    // Analytics Preditivo: Checagem de Limites de Manutenção
+                    const diffKm = finalKmNum - activeLog.initialKm;
+                    if (diffKm > 0) {
+                      const thresholds = [
+                        { name: "Troca de Óleo", limit: 10000 },
+                        { name: "Revisão de Pneus e Freios", limit: 40000 }
+                      ];
+                      
+                      for (const threshold of thresholds) {
+                        const prevMilestone = Math.floor(activeLog.initialKm / threshold.limit);
+                        const newMilestone = Math.floor(finalKmNum / threshold.limit);
+                        
+                        if (newMilestone > prevMilestone) {
+                          // Limite ultrapassado, cria um chamado interno para a Oficina!
+                          try {
+                            await addDoc(collection(db, 'external_requests'), {
+                              type: 'coleta', 
+                              requesterName: `SISTEMA PREDITIVO - ${threshold.name}`,
+                              address: `Oficina - Revisar Veículo ${activeLog.vehiclePlate}`,
+                              contactPhone: 'Automático',
+                              observations: `ALERTA PREDITIVO: O veículo ${activeLog.vehiclePlate} atingiu a marca de ${finalKmNum} KM rodados e necessita de ${threshold.name}. Este chamado foi gerado automaticamente pelo Orkestria AI.`,
+                              status: 'pending',
+                              read: false,
+                              createdAt: new Date().toISOString()
+                            });
+                          } catch (err) {
+                            console.error("Erro ao criar chamado preditivo", err);
+                          }
+                        }
+                      }
+                    }
                   }
                 }
 

@@ -8,6 +8,7 @@ import Dashboard from './pages/Dashboard';
 import RoutesPage from './pages/RoutesPage';
 import DriversPage from './pages/DriversPage';
 import VehiclesPage from './pages/VehiclesPage';
+import IssueBanner from './components/layout/IssueBanner';
 import FinancialPage from './pages/FinancialPage';
 import IssuesPage from './pages/IssuesPage';
 import MapPage from './pages/MapPage';
@@ -159,6 +160,7 @@ export default function App() {
             onNotificationClick={() => setCurrentView('requests')}
             currentUser={currentUser}
           />
+          <IssueBanner onBannerClick={() => setCurrentView('issues')} />
           <main className="flex-1 overflow-y-auto">
             {renderContent()}
           </main>

@@ -15,8 +15,9 @@ const StatusBadge = ({ status }: { status: RouteItem['status'] }) => {
   }
 }
 
-import { doc, getDoc, updateDoc, addDoc, collection } from 'firebase/firestore';
+import { collection, addDoc, updateDoc, doc, deleteDoc, writeBatch } from 'firebase/firestore';
 import { db } from '../lib/firebase';
+import { geocodeAddress, calculateDistance } from '../lib/googleMaps';
 
 const formatRouteId = (route: RouteItem | null) => {
   if (!route) return '';
@@ -110,6 +111,7 @@ export default function RoutesPage() {
   
   const [isCalculating, setIsCalculating] = useState(false);
   const [isFleetSaturated, setIsFleetSaturated] = useState(false);
+  const [isLoadingSuggestion, setIsLoadingSuggestion] = useState(false);
   const [filterStatus, setFilterStatus] = useState<'all' | 'pending' | 'in_progress' | 'completed' | 'issue'>('all');
   const [filterDate, setFilterDate] = useState<string>(''); // YYYY-MM-DD
 
@@ -404,6 +406,57 @@ export default function RoutesPage() {
       alert('Não foi possível calcular a rota com os endereços fornecidos. Erro: ' + (data?.error || ''));
     }
     setIsCalculating(false);
+  };
+
+  const suggestDriverByProximity = async () => {
+    const targetAddress = newRoute.origin || (newRoute.intermediates && newRoute.intermediates.length > 0 ? newRoute.intermediates[0] : null);
+    if (!targetAddress) {
+      alert("Por favor, adicione pelo menos um endereço (Origem ou Parada) à rota para calcular a proximidade.");
+      return;
+    }
+    
+    setIsLoadingSuggestion(true);
+    try {
+      const coords = await geocodeAddress(targetAddress);
+      if (!coords) {
+        alert("Não foi possível encontrar as coordenadas deste endereço no mapa.");
+        setIsLoadingSuggestion(false);
+        return;
+      }
+      
+      const activeDrivers = drivers?.filter((d: any) => d.status === 'active' || d.status === 'on_route') || [];
+      let bestDriver = '';
+      let minDistance = Infinity;
+      
+      activeDrivers.forEach((d: any) => {
+        if (d.location && d.location.lat && d.location.lng) {
+          const dist = calculateDistance(coords.lat, coords.lng, d.location.lat, d.location.lng);
+          if (dist < minDistance) {
+            // Check if they have enough time for the route if we already calculated it
+            const dateStr = newRoute.departureTime ? new Date(newRoute.departureTime).toLocaleDateString('pt-BR') : new Date().toLocaleDateString('pt-BR');
+            const avail = getDriverAvailability(d.name, dateStr);
+            const estMins = (newRoute as any).estimatedMinutes || 0;
+            
+            if (estMins === 0 || avail.minutesLeft >= estMins) {
+              minDistance = dist;
+              bestDriver = d.name;
+            }
+          }
+        }
+      });
+      
+      if (bestDriver) {
+        setNewRoute(prev => ({ ...prev, driver: bestDriver }));
+        alert(`Sucesso! Motorista sugerido: ${bestDriver} (${(minDistance / 1000).toFixed(1)} km de distância do local).`);
+      } else {
+        alert("Não foi possível encontrar um motorista com GPS ativo e tempo livre suficiente.");
+      }
+    } catch (err) {
+      console.error(err);
+      alert("Erro ao sugerir motorista.");
+    } finally {
+      setIsLoadingSuggestion(false);
+    }
   };
 
   const handleAddRoute = async (e: React.FormEvent) => {
@@ -1007,20 +1060,31 @@ export default function RoutesPage() {
               <div className="space-y-4">
                 <div>
                   <label className="block text-sm font-semibold text-slate-700 mb-1.5">Entregador</label>
-                  <select 
-                    value={newRoute.driver}
-                    onChange={(e) => setNewRoute({...newRoute, driver: e.target.value})}
-                    className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:border-primary focus:ring-1 focus:ring-primary shadow-sm"
-                  >
-                    <option value="">Aguardando entregador...</option>
-                    {drivers?.filter((d: any) => d.status === 'active' || d.status === 'on_route').map((d: any) => {
-                      const dateStr = newRoute.departureTime ? new Date(newRoute.departureTime).toLocaleDateString('pt-BR') : new Date().toLocaleDateString('pt-BR');
-                      const avail = getDriverAvailability(d.name, dateStr);
-                      return (
-                        <option key={d.id} value={d.name}>{d.name} (Livre: {avail.formatted})</option>
-                      );
-                    })}
-                  </select>
+                  <div className="flex gap-2">
+                    <select 
+                      value={newRoute.driver}
+                      onChange={(e) => setNewRoute({...newRoute, driver: e.target.value})}
+                      className="flex-1 px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:border-primary focus:ring-1 focus:ring-primary shadow-sm"
+                    >
+                      <option value="">Aguardando entregador...</option>
+                      {drivers?.filter((d: any) => d.status === 'active' || d.status === 'on_route').map((d: any) => {
+                        const dateStr = newRoute.departureTime ? new Date(newRoute.departureTime).toLocaleDateString('pt-BR') : new Date().toLocaleDateString('pt-BR');
+                        const avail = getDriverAvailability(d.name, dateStr);
+                        return (
+                          <option key={d.id} value={d.name}>{d.name} (Livre: {avail.formatted})</option>
+                        );
+                      })}
+                    </select>
+                    <button
+                      type="button"
+                      onClick={suggestDriverByProximity}
+                      disabled={isLoadingSuggestion}
+                      className="px-4 py-2.5 bg-indigo-50 text-indigo-700 font-semibold rounded-xl border border-indigo-100 hover:bg-indigo-100 transition-colors shadow-sm whitespace-nowrap flex items-center gap-2 disabled:opacity-50"
+                      title="Sugerir motorista mais próximo do endereço (GPS)"
+                    >
+                      📍 {isLoadingSuggestion ? 'Calculando...' : 'Smart Dispatch'}
+                    </button>
+                  </div>
                   {newRoute.driver && (newRoute as any).estimatedMinutes > 0 && (() => {
                     const dateStr = newRoute.departureTime ? new Date(newRoute.departureTime).toLocaleDateString('pt-BR') : new Date().toLocaleDateString('pt-BR');
                     const avail = getDriverAvailability(newRoute.driver, dateStr);
