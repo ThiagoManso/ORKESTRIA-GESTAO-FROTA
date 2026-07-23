@@ -1488,7 +1488,7 @@ export default function DriverViewPage({ driverId, driverName, driverStatus }: D
             <div className="p-6 border-t border-slate-100 bg-slate-50/50">
               <button
                 onClick={submitPOD}
-                disabled={isSubmittingPOD || !podReceiverName.trim() || !podFile}
+                disabled={isSubmittingPOD}
                 className="w-full flex justify-center items-center gap-2 bg-emerald-500 text-white font-bold py-3.5 px-4 rounded-xl hover:bg-emerald-600 active:scale-[0.98] transition-transform disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
               >
                 {isSubmittingPOD ? (

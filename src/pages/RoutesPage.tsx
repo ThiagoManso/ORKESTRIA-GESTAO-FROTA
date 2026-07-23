@@ -685,7 +685,7 @@ export default function RoutesPage() {
     }
   };
 
-  const handleRemoveStopFromRoute = async (routeId: string, stopToRemove: any) => {
+  const handleRemoveStopFromRoute = async (routeId: string, stopToRemove: any, stopIndexToRemove?: number) => {
     const route = routes.find(r => r.id === routeId);
     if (!route) return;
     
@@ -724,7 +724,14 @@ export default function RoutesPage() {
         newMeta.splice(indexToRemove, 1);
       }
 
-      const newStopDetails = route.stopDetails?.filter(s => s.id !== stopToRemove.id) || [];
+      let newStopDetails = [...(route.stopDetails || [])];
+      if (typeof stopIndexToRemove === 'number' && stopIndexToRemove >= 0 && stopIndexToRemove < newStopDetails.length) {
+        newStopDetails.splice(stopIndexToRemove, 1);
+      } else {
+        // Fallback for older calls if index is missing
+        newStopDetails = newStopDetails.filter(s => s.id !== stopToRemove.id);
+      }
+      
       const newStopsCount = Math.max(1, newStopDetails.length);
       const allCompleted = newStopDetails.length > 0 && newStopDetails.every(s => s.status === 'completed' || s.status === 'issue');
 
@@ -1538,7 +1545,7 @@ export default function RoutesPage() {
                                     <AlertTriangle size={14} /> Problema
                                   </button>
                                   <button
-                                    onClick={() => handleRemoveStopFromRoute(currentManageRoute.id, stop)}
+                                    onClick={() => handleRemoveStopFromRoute(currentManageRoute.id, stop, index)}
                                     className="flex items-center gap-1.5 text-xs text-red-500 hover:text-red-600 font-medium px-2 py-1.5 bg-red-50 rounded-md transition-colors"
                                     title="Remover da rota"
                                   >
