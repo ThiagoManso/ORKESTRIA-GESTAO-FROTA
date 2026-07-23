@@ -243,13 +243,14 @@ export default function DriverViewPage({ driverId, driverName, driverStatus }: D
         setSummaryRoute({ ...activeRoute, stopDetails: newStopDetails, status: 'completed' });
       }
 
-      await update(activeRoute.id, { 
+      // Fire and forget to not block UI when offline
+      update(activeRoute.id, { 
         stopDetails: newStopDetails,
         status: allCompleted ? 'completed' : (activeRoute.status === 'completed' ? 'in_progress' : activeRoute.status)
-      });
+      }).catch(console.error);
       
       if (newStopDetails[currentPODStopIndex].externalRequestId) {
-        await updateExternalRequest(newStopDetails[currentPODStopIndex].externalRequestId, { status: 'completed' }).catch(console.error);
+        updateExternalRequest(newStopDetails[currentPODStopIndex].externalRequestId, { status: 'completed' }).catch(console.error);
       }
       
       setIsPODModalOpen(false);
@@ -471,13 +472,14 @@ export default function DriverViewPage({ driverId, driverName, driverStatus }: D
         setSummaryRoute({ ...activeRoute, stopDetails: newStopDetails, status: 'completed' });
       }
 
-      await update(activeRoute.id, { 
+      // Fire and forget to not block UI when offline
+      update(activeRoute.id, { 
         stopDetails: newStopDetails,
         status: allCompleted ? 'completed' : (activeRoute.status === 'completed' ? 'in_progress' : activeRoute.status)
-      });
+      }).catch(console.error);
       
       if (newStopDetails[currentIssueStopIndex].externalRequestId) {
-        await updateExternalRequest(newStopDetails[currentIssueStopIndex].externalRequestId, { status: 'issue' }).catch(console.error);
+        updateExternalRequest(newStopDetails[currentIssueStopIndex].externalRequestId, { status: 'issue' }).catch(console.error);
       }
 
       // Reset state

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useCollection } from '../lib/useCollection';
 import { ExternalRequest } from '../types';
+import { useNavigate } from 'react-router-dom';
 import { Package, MapPin, CheckCircle, Clock, Search, Trash2, Calendar, Upload, Download, Plus, LayoutGrid, List as ListIcon, X, Edit2, MessageCircle } from 'lucide-react';
 import { useMapsLibrary } from '@vis.gl/react-google-maps';
 import { addDoc, collection, doc, updateDoc, getDocs, query, where } from 'firebase/firestore';
@@ -10,6 +11,7 @@ import { useRecurrenceEngine } from '../hooks/useRecurrenceEngine';
 
 export default function RequestsPage() {
   useRecurrenceEngine(); // Runs globally for all users
+  const navigate = useNavigate();
   const { data: requests, update, remove, loading } = useCollection<ExternalRequest>('external_requests');
   const { data: routes } = useCollection<RouteItem>('routes');
   const [searchTerm, setSearchTerm] = useState('');
@@ -263,12 +265,7 @@ export default function RequestsPage() {
 
   const handleGenerateRoute = () => {
     localStorage.setItem('mapSelectedRequests', JSON.stringify(selectedIds));
-    const routesBtn = document.querySelector('button[title="Rotas"]') || document.querySelector('a[href="#routes"]');
-    if (routesBtn) {
-      (routesBtn as HTMLElement).click();
-    } else {
-      window.dispatchEvent(new CustomEvent('navigate', { detail: 'routes' }));
-    }
+    navigate('/routes');
   };
 
   const toggleSelection = (id: string) => {

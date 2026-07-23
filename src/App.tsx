@@ -3,6 +3,7 @@ import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-
 import ExternalRequestPage from './pages/ExternalRequestPage';
 import DriverAuthWrapper from './pages/DriverAuthWrapper';
 import { APIProvider } from '@vis.gl/react-google-maps';
+import { WifiOff } from 'lucide-react';
 import Sidebar from './components/layout/Sidebar';
 import Header from './components/layout/Header';
 import Dashboard from './pages/Dashboard';
@@ -26,8 +27,6 @@ const API_KEY =
   (globalThis as any).GOOGLE_MAPS_PLATFORM_KEY ||
   '';
 const hasValidKey = Boolean(API_KEY) && API_KEY !== 'YOUR_API_KEY';
-
-import { WifiOff } from 'lucide-react';
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState<SystemUser | null>(null);
