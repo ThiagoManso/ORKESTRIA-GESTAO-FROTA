@@ -213,20 +213,34 @@ export default function DriverViewPage({ driverId, driverName, driverStatus }: D
     try {
       const compressedBlob = await compressImage(podFile);
       let photoUrl = '';
+      let uploadSuccess = false;
 
+      // Tentativa de upload no Storage (apenas se o navegador disser que tem rede)
       if (navigator.onLine) {
-        const fileRef = ref(storage, `pod/${activeRoute.id}_${currentPODStopIndex}_${Date.now()}.jpg`);
-        await uploadBytes(fileRef, compressedBlob);
-        photoUrl = await getDownloadURL(fileRef);
-      } else {
-        // Offline: Convert to base64 to save in Firestore document
+        try {
+          const fileRef = ref(storage, `pod/${activeRoute.id}_${currentPODStopIndex}_${Date.now()}.jpg`);
+          // Promise.race para não deixar o Firebase travar infinitamente se a rede estiver instável
+          const uploadPromise = uploadBytes(fileRef, compressedBlob);
+          const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 8000));
+          
+          await Promise.race([uploadPromise, timeoutPromise]);
+          photoUrl = await getDownloadURL(fileRef);
+          uploadSuccess = true;
+        } catch (uploadError) {
+          console.warn("Falha no upload para o Storage, caindo para modo offline (Base64).", uploadError);
+          uploadSuccess = false;
+        }
+      }
+
+      // Se falhou o upload ou estamos declaradamente offline, salva em Base64 localmente
+      if (!uploadSuccess) {
         const base64 = await new Promise<string>((resolve, reject) => {
           const reader = new FileReader();
           reader.readAsDataURL(compressedBlob);
           reader.onload = () => resolve(reader.result as string);
           reader.onerror = error => reject(error);
         });
-        photoUrl = base64; // This is safe because compressImage downsizes it to max 800px width and 0.7 quality.
+        photoUrl = base64;
       }
 
       const newStopDetails = [...activeRoute.stopDetails];
@@ -440,14 +454,27 @@ export default function DriverViewPage({ driverId, driverName, driverStatus }: D
     setIsSubmittingIssue(true);
     try {
       let photoUrl = '';
+      let uploadSuccess = false;
+      
       if (issueFile) {
+        const compressedBlob = await compressImage(issueFile);
+        
         if (navigator.onLine) {
-          const fileRef = ref(storage, `issues/${activeRoute.id}_${currentIssueStopIndex}_${Date.now()}`);
-          await uploadBytes(fileRef, issueFile);
-          photoUrl = await getDownloadURL(fileRef);
-        } else {
-          // Offline compression and base64
-          const compressedBlob = await compressImage(issueFile);
+          try {
+            const fileRef = ref(storage, `issues/${activeRoute.id}_${currentIssueStopIndex}_${Date.now()}`);
+            const uploadPromise = uploadBytes(fileRef, compressedBlob);
+            const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 8000));
+            
+            await Promise.race([uploadPromise, timeoutPromise]);
+            photoUrl = await getDownloadURL(fileRef);
+            uploadSuccess = true;
+          } catch (uploadError) {
+            console.warn("Falha no upload para o Storage, caindo para modo offline (Base64).", uploadError);
+            uploadSuccess = false;
+          }
+        }
+
+        if (!uploadSuccess) {
           const base64 = await new Promise<string>((resolve, reject) => {
             const reader = new FileReader();
             reader.readAsDataURL(compressedBlob);
