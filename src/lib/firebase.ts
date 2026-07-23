@@ -27,6 +27,8 @@ enableMultiTabIndexedDbPersistence(db).catch((err) => {
 export const auth = getAuth(app);
 import { getStorage } from 'firebase/storage';
 export const storage = getStorage(app);
+import { getFunctions } from 'firebase/functions';
+export const functions = getFunctions(app);
 
 // Inicializa o Messaging apenas se for suportado pelo navegador
 export const messaging = async () => {

@@ -212,9 +212,22 @@ export default function DriverViewPage({ driverId, driverName, driverStatus }: D
     setIsSubmittingPOD(true);
     try {
       const compressedBlob = await compressImage(podFile);
-      const fileRef = ref(storage, `pod/${activeRoute.id}_${currentPODStopIndex}_${Date.now()}.jpg`);
-      await uploadBytes(fileRef, compressedBlob);
-      const photoUrl = await getDownloadURL(fileRef);
+      let photoUrl = '';
+
+      if (navigator.onLine) {
+        const fileRef = ref(storage, `pod/${activeRoute.id}_${currentPODStopIndex}_${Date.now()}.jpg`);
+        await uploadBytes(fileRef, compressedBlob);
+        photoUrl = await getDownloadURL(fileRef);
+      } else {
+        // Offline: Convert to base64 to save in Firestore document
+        const base64 = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.readAsDataURL(compressedBlob);
+          reader.onload = () => resolve(reader.result as string);
+          reader.onerror = error => reject(error);
+        });
+        photoUrl = base64; // This is safe because compressImage downsizes it to max 800px width and 0.7 quality.
+      }
 
       const newStopDetails = [...activeRoute.stopDetails];
       newStopDetails[currentPODStopIndex] = { 
@@ -242,6 +255,10 @@ export default function DriverViewPage({ driverId, driverName, driverStatus }: D
       setIsPODModalOpen(false);
       setPodReceiverName('');
       setPodFile(null);
+
+      if (!navigator.onLine) {
+        alert("Entrega salva offline. O comprovante será enviado ao servidor quando a conexão voltar.");
+      }
     } catch (e: any) {
       console.error(e);
       alert("Erro ao registrar entrega: " + (e.message || e.toString()));
@@ -423,9 +440,21 @@ export default function DriverViewPage({ driverId, driverName, driverStatus }: D
     try {
       let photoUrl = '';
       if (issueFile) {
-        const fileRef = ref(storage, `issues/${activeRoute.id}_${currentIssueStopIndex}_${Date.now()}`);
-        await uploadBytes(fileRef, issueFile);
-        photoUrl = await getDownloadURL(fileRef);
+        if (navigator.onLine) {
+          const fileRef = ref(storage, `issues/${activeRoute.id}_${currentIssueStopIndex}_${Date.now()}`);
+          await uploadBytes(fileRef, issueFile);
+          photoUrl = await getDownloadURL(fileRef);
+        } else {
+          // Offline compression and base64
+          const compressedBlob = await compressImage(issueFile);
+          const base64 = await new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.readAsDataURL(compressedBlob);
+            reader.onload = () => resolve(reader.result as string);
+            reader.onerror = error => reject(error);
+          });
+          photoUrl = base64;
+        }
       }
 
       const newStopDetails = [...activeRoute.stopDetails];
@@ -456,6 +485,10 @@ export default function DriverViewPage({ driverId, driverName, driverStatus }: D
       setCurrentIssueStopIndex(null);
       setIssueText('');
       setIssueFile(null);
+
+      if (!navigator.onLine) {
+        alert("Problema registrado offline. Será sincronizado com o servidor quando a conexão voltar.");
+      }
     } catch (error) {
       console.error("Error submitting issue:", error);
       alert("Erro ao enviar o problema. Tente novamente.");
@@ -1101,6 +1134,11 @@ export default function DriverViewPage({ driverId, driverName, driverStatus }: D
                 const activeLog = dailyLogs?.find(l => l.driverId === driverId && l.status === 'active' && l.date === todayStr);
                 
                 if (activeLog) {
+                  if (finalKmNum < activeLog.initialKm) {
+                    alert(`Erro: O KM Final (${finalKmNum}) não pode ser menor que o KM Inicial do dia (${activeLog.initialKm}). Por favor, verifique o odômetro e insira um valor correto.`);
+                    return;
+                  }
+
                   await updateDailyLog(activeLog.id, {
                     finalKm: finalKmNum,
                     status: 'completed'

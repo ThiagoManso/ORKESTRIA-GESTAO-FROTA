@@ -19,7 +19,7 @@ export default function Header({ onMenuClick, onNotificationClick, currentUser }
   const unreadCount = externalRequests?.filter(r => !r.read).length || 0;
 
   const handleShare = () => {
-    const shareUrl = `${window.location.origin}${window.location.pathname}?view=external-request`;
+    const shareUrl = `${window.location.origin}/external-request`;
     navigator.clipboard.writeText(shareUrl);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
