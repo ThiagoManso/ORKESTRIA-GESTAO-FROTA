@@ -78,9 +78,9 @@ export default function DriversPage() {
 
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 sm:gap-6 mb-8">
         {[
-          { label: 'Total Cadastrados', value: '250.000', trend: '+1.2%' },
-          { label: 'Ativos Hoje', value: '2.450', trend: '+5%' },
-          { label: 'Em Rota Agora', value: '482', trend: null },
+          { label: 'Total Cadastrados', value: drivers.length.toString(), trend: null },
+          { label: 'Online / Disponíveis', value: drivers.filter((d: any) => d.status === 'active' || d.status === 'on_route').length.toString(), trend: null },
+          { label: 'Em Rota Agora', value: drivers.filter((d: any) => d.status === 'on_route').length.toString(), trend: null },
           { label: 'Aguardando Aprovação', value: drivers.filter((d: any) => d.status === 'pending_approval').length.toString(), trend: null },
         ].map(stat => (
           <div key={stat.label} className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-center">
