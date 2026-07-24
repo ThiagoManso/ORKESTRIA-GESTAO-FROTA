@@ -747,6 +747,259 @@ export default function DriverViewPage({ driverId, driverName, driverStatus }: D
             </div>
           </div>
         )}
+
+{/* Modal de Resumo de Rota */}
+      {summaryRoute && (
+        <div className="fixed inset-0 bg-emerald-900/80 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+          <div className="bg-white rounded-3xl w-full max-w-sm shadow-2xl overflow-hidden animate-in zoom-in-95 duration-500">
+            <div className="bg-emerald-500 p-8 text-center text-white relative overflow-hidden">
+              <div className="absolute top-0 left-0 w-full h-full bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-10"></div>
+              <div className="w-20 h-20 bg-white/20 rounded-full flex items-center justify-center mx-auto mb-4 relative z-10 backdrop-blur-md border border-white/30">
+                <CheckCircle size={40} className="text-white drop-shadow-md" />
+              </div>
+              <h2 className="text-3xl font-bold mb-2 relative z-10 drop-shadow-sm">Rota Concluída!</h2>
+              <p className="text-emerald-50 font-medium relative z-10">Ótimo trabalho nas entregas de hoje.</p>
+            </div>
+            
+            <div className="p-6 space-y-5 bg-slate-50">
+              <div className="flex gap-4">
+                <div className="flex-1 bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex flex-col items-center justify-center">
+                  <div className="text-slate-500 text-xs font-bold uppercase tracking-wider mb-1">Total de Paradas</div>
+                  <div className="text-3xl font-black text-slate-800">{summaryRoute.stops}</div>
+                </div>
+                <div className="flex-1 bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex flex-col items-center justify-center">
+                  <div className="text-slate-500 text-xs font-bold uppercase tracking-wider mb-1">KM Total</div>
+                  <div className="text-3xl font-black text-slate-800">{summaryRoute.distance}<span className="text-sm font-bold text-slate-400 ml-1">km</span></div>
+                </div>
+              </div>
+              
+              <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100">
+                <div className="flex justify-between items-center mb-2">
+                  <span className="text-slate-500 font-medium text-sm">Entregues:</span>
+                  <span className="font-bold text-emerald-600">
+                    {summaryRoute.stopDetails?.filter(s => s.status === 'completed').length || 0}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-500 font-medium text-sm">Problemas:</span>
+                  <span className="font-bold text-red-500">
+                    {summaryRoute.stopDetails?.filter(s => s.status === 'issue').length || 0}
+                  </span>
+                </div>
+              </div>
+
+              <button
+                onClick={() => setSummaryRoute(null)}
+                className="w-full py-4 mt-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl font-bold transition-all active:scale-[0.98] shadow-lg shadow-slate-900/20"
+              >
+                Voltar ao Início
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+{/* Modal de Problema */}
+      {isIssueModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl w-full max-w-sm shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="bg-red-500 p-4 text-white flex justify-between items-center">
+              <h3 className="font-bold text-lg flex items-center gap-2">
+                <AlertTriangle size={20} /> Relatar Problema
+              </h3>
+              <button 
+                onClick={() => setIsIssueModalOpen(false)}
+                className="text-white/80 hover:text-white hover:bg-white/10 p-1.5 rounded-lg transition-colors"
+              >
+                <X size={20} />
+              </button>
+            </div>
+            
+            <div className="p-5 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">O que aconteceu?</label>
+                <textarea
+                  value={issueText}
+                  onChange={(e) => setIssueText(e.target.value)}
+                  placeholder="Descreva o problema..."
+                  className="w-full border border-slate-200 rounded-xl p-3 text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent min-h-[100px] resize-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">Anexar Foto (Opcional)</label>
+                <div className="flex gap-2">
+                  <label className="flex-1 flex flex-col items-center justify-center gap-2 py-4 border-2 border-dashed border-slate-200 rounded-xl cursor-pointer hover:bg-slate-50 hover:border-slate-300 transition-colors">
+                    <Camera size={24} className="text-slate-400" />
+                    <span className="text-xs font-medium text-slate-500">Tirar Foto</span>
+                    <input 
+                      type="file" 
+                      accept="image/*" 
+                      capture="environment"
+                      className="hidden" 
+                      onChange={(e) => setIssueFile(e.target.files?.[0] || null)}
+                    />
+                  </label>
+                  <label className="flex-1 flex flex-col items-center justify-center gap-2 py-4 border-2 border-dashed border-slate-200 rounded-xl cursor-pointer hover:bg-slate-50 hover:border-slate-300 transition-colors">
+                    <ImageIcon size={24} className="text-slate-400" />
+                    <span className="text-xs font-medium text-slate-500">Galeria</span>
+                    <input 
+                      type="file" 
+                      accept="image/*" 
+                      className="hidden" 
+                      onChange={(e) => setIssueFile(e.target.files?.[0] || null)}
+                    />
+                  </label>
+                </div>
+                {issueFile && (
+                  <div className="mt-2 text-sm text-emerald-600 flex items-center gap-1 font-medium bg-emerald-50 p-2 rounded-lg">
+                    <CheckCircle size={16} /> Foto selecionada: {issueFile.name}
+                  </div>
+                )}
+              </div>
+
+              <button
+                onClick={submitIssue}
+                disabled={isSubmittingIssue}
+                className="w-full py-3.5 bg-red-500 hover:bg-red-600 text-white rounded-xl font-bold transition-colors disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              >
+                {isSubmittingIssue ? (
+                  <>
+                    <Loader2 size={20} className="animate-spin" />
+                    Enviando...
+                  </>
+                ) : (
+                  'Confirmar Problema'
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+{incomingRoute && (
+        <div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl w-full max-w-sm shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="bg-brand-cyan p-6 text-center text-white">
+              <div className="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center mx-auto mb-4">
+                <BellRing size={32} className="animate-bounce" />
+              </div>
+              <h2 className="text-2xl font-bold mb-1">Nova Rota!</h2>
+              <p className="text-brand-cyan/20 text-white/80 font-medium">Você tem uma nova solicitação</p>
+            </div>
+            <div className="p-6 space-y-4">
+              <div className="flex justify-between items-center bg-slate-50 p-3 rounded-xl border border-slate-100">
+                <span className="text-slate-500 font-medium">Identificação</span>
+                <span className="font-bold text-slate-800">#{formatRouteId(incomingRoute)}</span>
+              </div>
+              <div className="flex justify-between items-center bg-slate-50 p-3 rounded-xl border border-slate-100">
+                <span className="text-slate-500 font-medium">Paradas</span>
+                <span className="font-bold text-slate-800">{incomingRoute.stops}</span>
+              </div>
+              <div className="flex justify-between items-center bg-slate-50 p-3 rounded-xl border border-slate-100">
+                <span className="text-slate-500 font-medium">Distância</span>
+                <span className="font-bold text-slate-800">{incomingRoute.distance} km</span>
+              </div>
+            </div>
+            <div className="p-4 bg-slate-50 border-t border-slate-100 flex gap-3">
+              <button 
+                onClick={() => {
+                  handleAcceptRoute(incomingRoute.id);
+                  setIncomingRoute(null);
+                }}
+                className="flex-1 py-3.5 bg-gradient-to-r from-brand-cyan to-brand-blue text-white rounded-xl font-bold active:scale-[0.98] transition-transform flex items-center justify-center gap-2 shadow-md shadow-brand-blue/20"
+              >
+                <CheckCircle size={18} /> Aceitar
+              </button>
+              <button 
+                onClick={() => {
+                  handleRejectRoute(incomingRoute.id);
+                  setIncomingRoute(null);
+                }}
+                className="px-5 py-3.5 bg-white border border-slate-200 text-slate-600 rounded-xl font-bold active:scale-[0.98] transition-transform hover:bg-slate-50 flex items-center justify-center"
+              >
+                <XCircle size={18} />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+{isPODModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex flex-col justify-end animate-in fade-in" style={{ zIndex: 9999 }}>
+          <div className="bg-white rounded-t-3xl w-full max-h-[90vh] overflow-y-auto animate-in slide-in-from-bottom-full duration-300 relative" style={{ zIndex: 10000 }}>
+            <div className="sticky top-0 bg-white/80 backdrop-blur-xl border-b border-slate-100 px-6 py-4 flex justify-between items-center rounded-t-3xl z-10">
+              <h2 className="text-xl font-bold text-slate-800">Comprovante de Entrega</h2>
+              <button 
+                onClick={() => setIsPODModalOpen(false)}
+                className="p-2 -mr-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full transition-colors"
+              >
+                <X size={24} />
+              </button>
+            </div>
+            
+            <div className="p-6 space-y-6">
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-2">Nome do Recebedor</label>
+                <input 
+                  type="text" 
+                  required
+                  value={podReceiverName}
+                  onChange={(e) => setPodReceiverName(e.target.value)}
+                  placeholder="Quem recebeu a mercadoria?"
+                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:border-brand-cyan focus:ring-1 focus:ring-brand-cyan outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-2">Foto Comprovante</label>
+                <div className="flex gap-4">
+                  <div className="flex-1">
+                    <input 
+                      type="file" 
+                      accept="image/*"
+                      capture="environment"
+                      id="pod-photo"
+                      className="hidden"
+                      onChange={(e) => {
+                        if (e.target.files && e.target.files[0]) {
+                          setPodFile(e.target.files[0]);
+                        }
+                      }}
+                    />
+                    <label 
+                      htmlFor="pod-photo"
+                      className="flex items-center justify-center gap-2 w-full py-3 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-xl font-semibold active:scale-[0.98] transition-transform cursor-pointer"
+                    >
+                      <Camera size={20} /> Tirar Foto
+                    </label>
+                  </div>
+                </div>
+                {podFile && (
+                  <div className="mt-3 text-sm text-emerald-600 flex items-center gap-1.5 font-medium">
+                    <CheckCircle size={16} /> Foto anexada: {podFile.name}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="p-6 border-t border-slate-100 bg-slate-50/50">
+              <button
+                onClick={submitPOD}
+                disabled={isSubmittingPOD}
+                className="w-full flex justify-center items-center gap-2 bg-emerald-500 text-white font-bold py-3.5 px-4 rounded-xl hover:bg-emerald-600 active:scale-[0.98] transition-transform disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
+              >
+                {isSubmittingPOD ? (
+                  <><Loader2 size={20} className="animate-spin" /> Salvando...</>
+                ) : (
+                  <><CheckCircle size={20} /> Confirmar Entrega</>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       </>
     );
   };
@@ -897,182 +1150,11 @@ export default function DriverViewPage({ driverId, driverName, driverStatus }: D
             );
           })}
         
-      {/* Modal de Resumo de Rota */}
-      {summaryRoute && (
-        <div className="fixed inset-0 bg-emerald-900/80 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
-          <div className="bg-white rounded-3xl w-full max-w-sm shadow-2xl overflow-hidden animate-in zoom-in-95 duration-500">
-            <div className="bg-emerald-500 p-8 text-center text-white relative overflow-hidden">
-              <div className="absolute top-0 left-0 w-full h-full bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-10"></div>
-              <div className="w-20 h-20 bg-white/20 rounded-full flex items-center justify-center mx-auto mb-4 relative z-10 backdrop-blur-md border border-white/30">
-                <CheckCircle size={40} className="text-white drop-shadow-md" />
-              </div>
-              <h2 className="text-3xl font-bold mb-2 relative z-10 drop-shadow-sm">Rota Concluída!</h2>
-              <p className="text-emerald-50 font-medium relative z-10">Ótimo trabalho nas entregas de hoje.</p>
-            </div>
-            
-            <div className="p-6 space-y-5 bg-slate-50">
-              <div className="flex gap-4">
-                <div className="flex-1 bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex flex-col items-center justify-center">
-                  <div className="text-slate-500 text-xs font-bold uppercase tracking-wider mb-1">Total de Paradas</div>
-                  <div className="text-3xl font-black text-slate-800">{summaryRoute.stops}</div>
-                </div>
-                <div className="flex-1 bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex flex-col items-center justify-center">
-                  <div className="text-slate-500 text-xs font-bold uppercase tracking-wider mb-1">KM Total</div>
-                  <div className="text-3xl font-black text-slate-800">{summaryRoute.distance}<span className="text-sm font-bold text-slate-400 ml-1">km</span></div>
-                </div>
-              </div>
-              
-              <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100">
-                <div className="flex justify-between items-center mb-2">
-                  <span className="text-slate-500 font-medium text-sm">Entregues:</span>
-                  <span className="font-bold text-emerald-600">
-                    {summaryRoute.stopDetails?.filter(s => s.status === 'completed').length || 0}
-                  </span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-slate-500 font-medium text-sm">Problemas:</span>
-                  <span className="font-bold text-red-500">
-                    {summaryRoute.stopDetails?.filter(s => s.status === 'issue').length || 0}
-                  </span>
-                </div>
-              </div>
+      
 
-              <button
-                onClick={() => setSummaryRoute(null)}
-                className="w-full py-4 mt-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl font-bold transition-all active:scale-[0.98] shadow-lg shadow-slate-900/20"
-              >
-                Voltar ao Início
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      
 
-      {/* Modal de Problema */}
-      {isIssueModalOpen && (
-        <div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl w-full max-w-sm shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
-            <div className="bg-red-500 p-4 text-white flex justify-between items-center">
-              <h3 className="font-bold text-lg flex items-center gap-2">
-                <AlertTriangle size={20} /> Relatar Problema
-              </h3>
-              <button 
-                onClick={() => setIsIssueModalOpen(false)}
-                className="text-white/80 hover:text-white hover:bg-white/10 p-1.5 rounded-lg transition-colors"
-              >
-                <X size={20} />
-              </button>
-            </div>
-            
-            <div className="p-5 space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">O que aconteceu?</label>
-                <textarea
-                  value={issueText}
-                  onChange={(e) => setIssueText(e.target.value)}
-                  placeholder="Descreva o problema..."
-                  className="w-full border border-slate-200 rounded-xl p-3 text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent min-h-[100px] resize-none"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">Anexar Foto (Opcional)</label>
-                <div className="flex gap-2">
-                  <label className="flex-1 flex flex-col items-center justify-center gap-2 py-4 border-2 border-dashed border-slate-200 rounded-xl cursor-pointer hover:bg-slate-50 hover:border-slate-300 transition-colors">
-                    <Camera size={24} className="text-slate-400" />
-                    <span className="text-xs font-medium text-slate-500">Tirar Foto</span>
-                    <input 
-                      type="file" 
-                      accept="image/*" 
-                      capture="environment"
-                      className="hidden" 
-                      onChange={(e) => setIssueFile(e.target.files?.[0] || null)}
-                    />
-                  </label>
-                  <label className="flex-1 flex flex-col items-center justify-center gap-2 py-4 border-2 border-dashed border-slate-200 rounded-xl cursor-pointer hover:bg-slate-50 hover:border-slate-300 transition-colors">
-                    <ImageIcon size={24} className="text-slate-400" />
-                    <span className="text-xs font-medium text-slate-500">Galeria</span>
-                    <input 
-                      type="file" 
-                      accept="image/*" 
-                      className="hidden" 
-                      onChange={(e) => setIssueFile(e.target.files?.[0] || null)}
-                    />
-                  </label>
-                </div>
-                {issueFile && (
-                  <div className="mt-2 text-sm text-emerald-600 flex items-center gap-1 font-medium bg-emerald-50 p-2 rounded-lg">
-                    <CheckCircle size={16} /> Foto selecionada: {issueFile.name}
-                  </div>
-                )}
-              </div>
-
-              <button
-                onClick={submitIssue}
-                disabled={isSubmittingIssue}
-                className="w-full py-3.5 bg-red-500 hover:bg-red-600 text-white rounded-xl font-bold transition-colors disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-              >
-                {isSubmittingIssue ? (
-                  <>
-                    <Loader2 size={20} className="animate-spin" />
-                    Enviando...
-                  </>
-                ) : (
-                  'Confirmar Problema'
-                )}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {incomingRoute && (
-        <div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl w-full max-w-sm shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
-            <div className="bg-brand-cyan p-6 text-center text-white">
-              <div className="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center mx-auto mb-4">
-                <BellRing size={32} className="animate-bounce" />
-              </div>
-              <h2 className="text-2xl font-bold mb-1">Nova Rota!</h2>
-              <p className="text-brand-cyan/20 text-white/80 font-medium">Você tem uma nova solicitação</p>
-            </div>
-            <div className="p-6 space-y-4">
-              <div className="flex justify-between items-center bg-slate-50 p-3 rounded-xl border border-slate-100">
-                <span className="text-slate-500 font-medium">Identificação</span>
-                <span className="font-bold text-slate-800">#{formatRouteId(incomingRoute)}</span>
-              </div>
-              <div className="flex justify-between items-center bg-slate-50 p-3 rounded-xl border border-slate-100">
-                <span className="text-slate-500 font-medium">Paradas</span>
-                <span className="font-bold text-slate-800">{incomingRoute.stops}</span>
-              </div>
-              <div className="flex justify-between items-center bg-slate-50 p-3 rounded-xl border border-slate-100">
-                <span className="text-slate-500 font-medium">Distância</span>
-                <span className="font-bold text-slate-800">{incomingRoute.distance} km</span>
-              </div>
-            </div>
-            <div className="p-4 bg-slate-50 border-t border-slate-100 flex gap-3">
-              <button 
-                onClick={() => {
-                  handleAcceptRoute(incomingRoute.id);
-                  setIncomingRoute(null);
-                }}
-                className="flex-1 py-3.5 bg-gradient-to-r from-brand-cyan to-brand-blue text-white rounded-xl font-bold active:scale-[0.98] transition-transform flex items-center justify-center gap-2 shadow-md shadow-brand-blue/20"
-              >
-                <CheckCircle size={18} /> Aceitar
-              </button>
-              <button 
-                onClick={() => {
-                  handleRejectRoute(incomingRoute.id);
-                  setIncomingRoute(null);
-                }}
-                className="px-5 py-3.5 bg-white border border-slate-200 text-slate-600 rounded-xl font-bold active:scale-[0.98] transition-transform hover:bg-slate-50 flex items-center justify-center"
-              >
-                <XCircle size={18} />
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      
 </div>
       </div>
     );
@@ -1328,179 +1410,11 @@ export default function DriverViewPage({ driverId, driverName, driverStatus }: D
           </div>
         )}
       
-      {/* Modal de Resumo de Rota */}
-      {summaryRoute && (
-        <div className="fixed inset-0 bg-emerald-900/80 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
-          <div className="bg-white rounded-3xl w-full max-w-sm shadow-2xl overflow-hidden animate-in zoom-in-95 duration-500">
-            <div className="bg-emerald-500 p-8 text-center text-white relative overflow-hidden">
-              <div className="absolute top-0 left-0 w-full h-full bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-10"></div>
-              <div className="w-20 h-20 bg-white/20 rounded-full flex items-center justify-center mx-auto mb-4 relative z-10 backdrop-blur-md border border-white/30">
-                <CheckCircle size={40} className="text-white drop-shadow-md" />
-              </div>
-              <h2 className="text-3xl font-bold mb-2 relative z-10 drop-shadow-sm">Rota Concluída!</h2>
-              <p className="text-emerald-50 font-medium relative z-10">Ótimo trabalho nas entregas de hoje.</p>
-            </div>
-            
-            <div className="p-6 space-y-5 bg-slate-50">
-              <div className="flex gap-4">
-                <div className="flex-1 bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex flex-col items-center justify-center">
-                  <div className="text-slate-500 text-xs font-bold uppercase tracking-wider mb-1">Total de Paradas</div>
-                  <div className="text-3xl font-black text-slate-800">{summaryRoute.stops}</div>
-                </div>
-                <div className="flex-1 bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex flex-col items-center justify-center">
-                  <div className="text-slate-500 text-xs font-bold uppercase tracking-wider mb-1">KM Total</div>
-                  <div className="text-3xl font-black text-slate-800">{summaryRoute.distance}<span className="text-sm font-bold text-slate-400 ml-1">km</span></div>
-                </div>
-              </div>
-              
-              <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100">
-                <div className="flex justify-between items-center mb-2">
-                  <span className="text-slate-500 font-medium text-sm">Entregues:</span>
-                  <span className="font-bold text-emerald-600">
-                    {summaryRoute.stopDetails?.filter(s => s.status === 'completed').length || 0}
-                  </span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-slate-500 font-medium text-sm">Problemas:</span>
-                  <span className="font-bold text-red-500">
-                    {summaryRoute.stopDetails?.filter(s => s.status === 'issue').length || 0}
-                  </span>
-                </div>
-              </div>
+      
 
-              <button
-                onClick={() => setSummaryRoute(null)}
-                className="w-full py-4 mt-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl font-bold transition-all active:scale-[0.98] shadow-lg shadow-slate-900/20"
-              >
-                Voltar ao Início
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      
 
-      {incomingRoute && (
-        <div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl w-full max-w-sm shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
-            <div className="bg-brand-cyan p-6 text-center text-white">
-              <div className="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center mx-auto mb-4">
-                <BellRing size={32} className="animate-bounce" />
-              </div>
-              <h2 className="text-2xl font-bold mb-1">Nova Rota!</h2>
-              <p className="text-brand-cyan/20 text-white/80 font-medium">Você tem uma nova solicitação</p>
-            </div>
-            <div className="p-6 space-y-4">
-              <div className="flex justify-between items-center bg-slate-50 p-3 rounded-xl border border-slate-100">
-                <span className="text-slate-500 font-medium">Identificação</span>
-                <span className="font-bold text-slate-800">#{formatRouteId(incomingRoute)}</span>
-              </div>
-              <div className="flex justify-between items-center bg-slate-50 p-3 rounded-xl border border-slate-100">
-                <span className="text-slate-500 font-medium">Paradas</span>
-                <span className="font-bold text-slate-800">{incomingRoute.stops}</span>
-              </div>
-              <div className="flex justify-between items-center bg-slate-50 p-3 rounded-xl border border-slate-100">
-                <span className="text-slate-500 font-medium">Distância</span>
-                <span className="font-bold text-slate-800">{incomingRoute.distance} km</span>
-              </div>
-            </div>
-            <div className="p-4 bg-slate-50 border-t border-slate-100 flex gap-3">
-              <button 
-                onClick={() => {
-                  handleAcceptRoute(incomingRoute.id);
-                  setIncomingRoute(null);
-                }}
-                className="flex-1 py-3.5 bg-gradient-to-r from-brand-cyan to-brand-blue text-white rounded-xl font-bold active:scale-[0.98] transition-transform flex items-center justify-center gap-2 shadow-md shadow-brand-blue/20"
-              >
-                <CheckCircle size={18} /> Aceitar
-              </button>
-              <button 
-                onClick={() => {
-                  handleRejectRoute(incomingRoute.id);
-                  setIncomingRoute(null);
-                }}
-                className="px-5 py-3.5 bg-white border border-slate-200 text-slate-600 rounded-xl font-bold active:scale-[0.98] transition-transform hover:bg-slate-50 flex items-center justify-center"
-              >
-                <XCircle size={18} />
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {isPODModalOpen && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex flex-col justify-end animate-in fade-in" style={{ zIndex: 9999 }}>
-          <div className="bg-white rounded-t-3xl w-full max-h-[90vh] overflow-y-auto animate-in slide-in-from-bottom-full duration-300 relative" style={{ zIndex: 10000 }}>
-            <div className="sticky top-0 bg-white/80 backdrop-blur-xl border-b border-slate-100 px-6 py-4 flex justify-between items-center rounded-t-3xl z-10">
-              <h2 className="text-xl font-bold text-slate-800">Comprovante de Entrega</h2>
-              <button 
-                onClick={() => setIsPODModalOpen(false)}
-                className="p-2 -mr-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full transition-colors"
-              >
-                <X size={24} />
-              </button>
-            </div>
-            
-            <div className="p-6 space-y-6">
-              <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-2">Nome do Recebedor</label>
-                <input 
-                  type="text" 
-                  required
-                  value={podReceiverName}
-                  onChange={(e) => setPodReceiverName(e.target.value)}
-                  placeholder="Quem recebeu a mercadoria?"
-                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:border-brand-cyan focus:ring-1 focus:ring-brand-cyan outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-2">Foto Comprovante</label>
-                <div className="flex gap-4">
-                  <div className="flex-1">
-                    <input 
-                      type="file" 
-                      accept="image/*"
-                      capture="environment"
-                      id="pod-photo"
-                      className="hidden"
-                      onChange={(e) => {
-                        if (e.target.files && e.target.files[0]) {
-                          setPodFile(e.target.files[0]);
-                        }
-                      }}
-                    />
-                    <label 
-                      htmlFor="pod-photo"
-                      className="flex items-center justify-center gap-2 w-full py-3 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-xl font-semibold active:scale-[0.98] transition-transform cursor-pointer"
-                    >
-                      <Camera size={20} /> Tirar Foto
-                    </label>
-                  </div>
-                </div>
-                {podFile && (
-                  <div className="mt-3 text-sm text-emerald-600 flex items-center gap-1.5 font-medium">
-                    <CheckCircle size={16} /> Foto anexada: {podFile.name}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <div className="p-6 border-t border-slate-100 bg-slate-50/50">
-              <button
-                onClick={submitPOD}
-                disabled={isSubmittingPOD}
-                className="w-full flex justify-center items-center gap-2 bg-emerald-500 text-white font-bold py-3.5 px-4 rounded-xl hover:bg-emerald-600 active:scale-[0.98] transition-transform disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
-              >
-                {isSubmittingPOD ? (
-                  <><Loader2 size={20} className="animate-spin" /> Salvando...</>
-                ) : (
-                  <><CheckCircle size={20} /> Confirmar Entrega</>
-                )}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      
 </div>
     </div>
   );
