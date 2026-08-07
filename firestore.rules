@@ -1,0 +1,70 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Função para obter os dados do usuário autenticado na coleção system_users
+    function getUserData() {
+      return get(/databases/$(database)/documents/system_users/$(request.auth.uid)).data;
+    }
+
+    // Função para verificar se o usuário é Super Admin (Orkestria)
+    function isSuperAdmin() {
+      return request.auth != null && (
+        getUserData().role == 'super_admin' || 
+        request.auth.token.email == 'thiago.manso@orkestriaos.com.br' ||
+        request.auth.token.email == 'admin@orkestriaos.com.br'
+      );
+    }
+
+    // Função para verificar se o usuário pertence à mesma empresa do documento
+    function isSameCompany(docData) {
+      return request.auth != null && (
+        isSuperAdmin() ||
+        !('companyId' in docData) ||
+        docData.companyId == null ||
+        docData.companyId == "" ||
+        getUserData().companyId == null ||
+        getUserData().companyId == "" ||
+        docData.companyId == getUserData().companyId
+      );
+    }
+
+    // Coleção de usuários do sistema
+    match /system_users/{userId} {
+      allow read: if request.auth != null && (
+        request.auth.uid == userId ||
+        isSuperAdmin() ||
+        !('companyId' in resource.data) ||
+        resource.data.companyId == null ||
+        resource.data.companyId == getUserData().companyId
+      );
+      allow create: if request.auth != null; // Cadastro inicial via Demo/Onboarding
+      allow update, delete: if request.auth != null && (
+        request.auth.uid == userId ||
+        isSuperAdmin() ||
+        (getUserData().role == 'admin' && (resource.data.companyId == getUserData().companyId || !('companyId' in resource.data)))
+      );
+    }
+
+    // Coleções de Auditoria do Super Admin
+    match /super_admin_audit_logs/{logId} {
+      allow read, write: if isSuperAdmin();
+    }
+
+    // Coleções do SaaS (frota, motoristas, rotas, checklists, logs, finanças, avarias, chamados)
+    match /{collectionName}/{docId} {
+      allow read: if request.auth != null && (
+        isSuperAdmin() ||
+        resource == null ||
+        isSameCompany(resource.data) ||
+        ('userId' in resource.data && (resource.data.userId == request.auth.uid || resource.data.userId == getUserData().id))
+      );
+      allow create: if request.auth != null;
+      allow update, delete: if request.auth != null && (
+        isSuperAdmin() ||
+        isSameCompany(resource.data) ||
+        ('userId' in resource.data && (resource.data.userId == request.auth.uid || resource.data.userId == getUserData().id))
+      );
+    }
+  }
+}

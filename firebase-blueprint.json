@@ -1,0 +1,36 @@
+{
+  "collections": [
+    {
+      "name": "routes",
+      "description": "Delivery routes",
+      "rules": [
+        "read: if true",
+        "write: if true"
+      ]
+    },
+    {
+      "name": "drivers",
+      "description": "Delivery drivers",
+      "rules": [
+        "read: if true",
+        "write: if true"
+      ]
+    },
+    {
+      "name": "vehicles",
+      "description": "Fleet vehicles",
+      "rules": [
+        "read: if true",
+        "write: if true"
+      ]
+    },
+    {
+      "name": "settings",
+      "description": "System settings",
+      "rules": [
+        "read: if true",
+        "write: if true"
+      ]
+    }
+  ]
+}

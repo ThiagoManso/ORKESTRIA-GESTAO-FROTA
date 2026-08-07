@@ -1,0 +1,12 @@
+{
+  "projectId": "orkestria-os-gestao-de-frota",
+  "appId": "1:23796532338:web:c6dfa3903bc060359eeeeb",
+  "apiKey": "AIzaSyDxhehxMBvx5C8TbfaKr25iaBRzT0B-pf8",
+  "authDomain": "orkestria-os-gestao-de-frota.firebaseapp.com",
+  "firestoreDatabaseId": "gestaodefrota",
+  "storageBucket": "orkestria-os-gestao-de-frota.firebasestorage.app",
+  "messagingSenderId": "23796532338",
+  "measurementId": "",
+  "oAuthClientId": "23796532338-o9209m4sqfammgnllsf2a017qt02ak3t.apps.googleusercontent.com",
+  "recaptchaSiteKey": ""
+}

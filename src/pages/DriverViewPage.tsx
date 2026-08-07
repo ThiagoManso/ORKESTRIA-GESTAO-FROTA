@@ -1,0 +1,1895 @@
+import React, { useState, useEffect, useRef } from 'react';
+import { RouteItem, Vehicle, DailyLog } from '../types';
+import { useCollection } from '../lib/useCollection';
+import { MapPin, CheckCircle, AlertTriangle, Truck, Navigation, Package, XCircle, LogOut, BellRing, X, Camera, Image as ImageIcon, Loader2, Clock, CarFront, ShieldCheck, Wrench, Eye, Box, AlertCircle, User } from 'lucide-react';
+import { auth, messaging, db, storage } from '../lib/firebase';
+import { signOut } from 'firebase/auth';
+import { getToken, onMessage } from 'firebase/messaging';
+import { doc, updateDoc, setDoc, addDoc, collection, getDoc, onSnapshot } from 'firebase/firestore';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { analyzeVehicleInspection } from '../lib/aiInspection';
+import { compressImageToDataUrl } from '../lib/utils';
+import { syncDriverStatus } from '../lib/driverSync';
+
+interface DriverViewPageProps {
+  driverId?: string;
+  driverName?: string;
+  driverStatus?: string;
+}
+
+export default function DriverViewPage({ driverId, driverName, driverStatus }: DriverViewPageProps) {
+  const { data: routes, update } = useCollection<RouteItem>('routes');
+  const { update: updateExternalRequest } = useCollection<any>('external_requests');
+  const { data: vehicles, update: updateVehicle } = useCollection<Vehicle>('vehicles');
+  const { data: dailyLogs, add: addDailyLog, update: updateDailyLog } = useCollection<DailyLog>('dailyLogs');
+
+  const [showUserMenu, setShowUserMenu] = useState(false);
+  const userMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent | TouchEvent) => {
+      if (userMenuRef.current && !userMenuRef.current.contains(event.target as Node)) {
+        setShowUserMenu(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('touchstart', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('touchstart', handleClickOutside);
+    };
+  }, []);
+
+  const [showVehicleSelection, setShowVehicleSelection] = useState(false);
+  const [showChecklist, setShowChecklist] = useState(false);
+  const [selectedVehicle, setSelectedVehicle] = useState<Vehicle | null>(null);
+  const [checklistInitialKm, setChecklistInitialKm] = useState(0);
+  const [checklistFinalKm, setChecklistFinalKm] = useState('');
+  const [observations, setObservations] = useState('');
+  const [checklist, setChecklist] = useState({
+    extinguisher: false, tools: false, seatbelt: false,
+    tires: false, oil: false, water: false, brakes: false, dashboardLights: false,
+    headlights: false, turnSignals: false, brakeLights: false, mirrors: false, wipers: false,
+    cleaning: false, doors: false, structure: false, tieDowns: false, bodywork: false,
+  });
+
+  const [inspectionPhotos, setInspectionPhotos] = useState<{ front?: string; back?: string; left?: string; right?: string }>({});
+  const [isAnalyzingAi, setIsAnalyzingAi] = useState(false);
+  const [inspectionFrequencyDays, setInspectionFrequencyDays] = useState<number>(3);
+
+  useEffect(() => {
+    const inspectionRef = doc(db, 'settings', 'inspection');
+    const unsubscribe = onSnapshot(inspectionRef, (snap) => {
+      if (snap.exists() && snap.data()?.frequencyDays !== undefined) {
+        setInspectionFrequencyDays(Number(snap.data().frequencyDays) || 3);
+      }
+    }, (err) => {
+      console.warn('Erro ao carregar configuração de vistoria AI:', err);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  const requiresPhotoInspection = (vehicle: Vehicle) => {
+    if (!vehicle.lastVisualInspectionDate) return true;
+    if (inspectionFrequencyDays === 1) return true; // Todos os dias: exigir fotos a cada novo checking / log inclusive no mesmo dia
+    const todayStr = new Date().toISOString().split('T')[0];
+    if (vehicle.lastVisualInspectionDate === todayStr) return false;
+    const lastDate = new Date(vehicle.lastVisualInspectionDate + 'T00:00:00');
+    const todayDate = new Date(todayStr + 'T00:00:00');
+    const diffTime = Math.abs(todayDate.getTime() - lastDate.getTime());
+    const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
+    return diffDays >= (inspectionFrequencyDays || 3);
+  };
+
+  const handleDriverCapturePhoto = async (
+    e: React.ChangeEvent<HTMLInputElement>,
+    position: 'front' | 'back' | 'left' | 'right'
+  ) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const compressedDataUrl = await compressImageToDataUrl(file, 900, 0.75);
+      setInspectionPhotos((prev) => ({
+        ...prev,
+        [position]: compressedDataUrl,
+      }));
+    } catch (err) {
+      console.error('Erro ao comprimir foto da vistoria:', err);
+      alert('Erro ao carregar a foto. Tente novamente.');
+    }
+  };
+
+  const [notificationStatus, setNotificationStatus] = useState<string>('default');
+  const [notifiedRoutes, setNotifiedRoutes] = useState<string[]>([]);
+  const [incomingRoute, setIncomingRoute] = useState<RouteItem | null>(null);
+
+  const [isIssueModalOpen, setIsIssueModalOpen] = useState(false);
+  const [currentIssueStopIndex, setCurrentIssueStopIndex] = useState<number | null>(null);
+  const [issueText, setIssueText] = useState('');
+  const [issueFile, setIssueFile] = useState<File | null>(null);
+  const [isSubmittingIssue, setIsSubmittingIssue] = useState(false);
+  const [summaryRoute, setSummaryRoute] = useState<RouteItem | null>(null);
+  const [showEndOfDay, setShowEndOfDay] = useState(false);
+  const [showPendingCloseModal, setShowPendingCloseModal] = useState(false);
+  const [pendingCloseLog, setPendingCloseLog] = useState<DailyLog | null>(null);
+  const [pendingFinalKm, setPendingFinalKm] = useState('');
+  
+  const [isPODModalOpen, setIsPODModalOpen] = useState(false);
+  const [currentPODStopIndex, setCurrentPODStopIndex] = useState<number | null>(null);
+  const [podReceiverName, setPodReceiverName] = useState('');
+  const [podFile, setPodFile] = useState<File | null>(null);
+  const [isSubmittingPOD, setIsSubmittingPOD] = useState(false);
+
+  const [navTarget, setNavTarget] = useState<string | null>(null);
+
+  const handleNavigate = (address: string) => {
+    const pref = localStorage.getItem('navAppPref');
+    if (pref === 'waze') {
+      window.open(`https://waze.com/ul?q=${encodeURIComponent(address)}&navigate=yes`, '_blank');
+    } else if (pref === 'maps') {
+      window.open(`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(address)}`, '_blank');
+    } else {
+      setNavTarget(address);
+    }
+  };
+
+  const setNavPreferenceAndOpen = (app: 'waze' | 'maps', address: string) => {
+    localStorage.setItem('navAppPref', app);
+    if (app === 'waze') {
+      window.open(`https://waze.com/ul?q=${encodeURIComponent(address)}&navigate=yes`, '_blank');
+    } else {
+      window.open(`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(address)}`, '_blank');
+    }
+    setNavTarget(null);
+  };
+
+  const playNotificationSound = () => {
+    try {
+      const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
+      if (!AudioContext) return;
+      const ctx = new AudioContext();
+      const osc = ctx.createOscillator();
+      const gainNode = ctx.createGain();
+      
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(880, ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(1760, ctx.currentTime + 0.1);
+
+      gainNode.gain.setValueAtTime(0, ctx.currentTime);
+      gainNode.gain.linearRampToValueAtTime(0.5, ctx.currentTime + 0.05);
+      gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.5);
+
+      osc.connect(gainNode);
+      gainNode.connect(ctx.destination);
+
+      osc.start();
+      osc.stop(ctx.currentTime + 0.5);
+    } catch (e) {
+      console.error("Audio play failed", e);
+    }
+  };
+  
+  const toggleOnlineStatus = async () => {
+    if (!driverId) return;
+    if (unclosedPrevLog) {
+      alert(`Atenção: Turno do dia ${unclosedPrevLog.date.split('-').reverse().join('/')} pendente de encerramento!\n\nPor regra do sistema, você deve lançar o KM Final daquele dia antes de iniciar o novo turno e receber novas demandas.`);
+      setPendingCloseLog(unclosedPrevLog);
+      setPendingFinalKm('');
+      setShowPendingCloseModal(true);
+      return;
+    }
+    if (driverStatus === 'offline') {
+      setShowVehicleSelection(true);
+    } else {
+      try {
+        await syncDriverStatus({ id: driverId, name: driverName, email: auth.currentUser?.email || undefined }, 'offline', null);
+      } catch (error) {
+        console.error("Error updating status", error);
+      }
+    }
+  };
+
+  const handleVehicleSelect = (vehicle: Vehicle) => {
+    setSelectedVehicle(vehicle);
+    setChecklistInitialKm(vehicle.initialKm || 0);
+    setShowVehicleSelection(false);
+    setShowChecklist(true);
+  };
+
+  const submitChecklist = async () => {
+    if (!driverId || !selectedVehicle) return;
+    
+    if (checklistInitialKm < (selectedVehicle.initialKm || 0)) {
+      const confirmInconsistent = window.confirm(
+        `Atenção: O KM Inicial informado (${checklistInitialKm} km) é MENOR que o último KM registrado no veículo (${selectedVehicle.initialKm} km).\n\nDeseja confirmar e seguir com esta inconsistência?`
+      );
+      if (!confirmInconsistent) {
+        return;
+      }
+    }
+
+    try {
+      const todayStr = new Date().toISOString().split('T')[0];
+
+      let visualInspectionData = undefined;
+      if (requiresPhotoInspection(selectedVehicle)) {
+        setIsAnalyzingAi(true);
+        const aiAssessment = await analyzeVehicleInspection(
+          selectedVehicle.referencePhotos || {},
+          inspectionPhotos,
+          selectedVehicle.plate,
+          {
+            brand: selectedVehicle.brand,
+            model: selectedVehicle.model,
+            type: selectedVehicle.type,
+            color: selectedVehicle.color,
+            year: selectedVehicle.year,
+          }
+        );
+        visualInspectionData = {
+          date: todayStr,
+          photos: inspectionPhotos,
+          aiAssessment
+        };
+
+        if (aiAssessment.damageDetected || aiAssessment.cleanlinessScore === 0 || aiAssessment.damagesList.length > 0) {
+          const alertMsg = [
+            `⚠️ ALERTA DE VISTORIA AI - DIVERGÊNCIA OU AVARIA IDENTIFICADA:`,
+            ``,
+            aiAssessment.summary,
+            ``,
+            ...(aiAssessment.damagesList.length > 0
+              ? [`Detalhes identificados:`, ...aiAssessment.damagesList.map((d: string) => `• ${d}`)]
+              : []),
+            ``,
+            `O registro do checklist foi enviado com alerta para a Central do Gestor.`
+          ].join('\n');
+          alert(alertMsg);
+        } else {
+          alert(`✅ Vistoria AI Aprovada!\n${aiAssessment.summary}`);
+        }
+
+        try {
+          await setDoc(doc(db, 'vehicles', selectedVehicle.id), {
+            lastVisualInspectionDate: todayStr
+          }, { merge: true });
+        } catch (vehErr) {
+          console.warn('Erro ao atualizar data de vistoria do veículo:', vehErr);
+        }
+        setIsAnalyzingAi(false);
+      }
+
+      await addDailyLog({
+        driverId,
+        driverName: driverName || 'Motorista',
+        vehicleId: selectedVehicle.id,
+        vehiclePlate: selectedVehicle.plate,
+        date: todayStr,
+        initialKm: checklistInitialKm,
+        checklist,
+        observations: observations || '',
+        status: 'active',
+        ...(visualInspectionData ? { visualInspection: visualInspectionData } : {})
+      });
+
+      try {
+        await syncDriverStatus({ id: driverId, name: driverName }, 'active', selectedVehicle.id);
+      } catch (driverErr) {
+        console.warn('Erro ao atualizar status do motorista no Firestore:', driverErr);
+      }
+
+      setShowChecklist(false);
+      setChecklist({
+        extinguisher: false, tools: false, seatbelt: false,
+        tires: false, oil: false, water: false, brakes: false, dashboardLights: false,
+        headlights: false, turnSignals: false, brakeLights: false, mirrors: false, wipers: false,
+        cleaning: false, doors: false, structure: false, tieDowns: false, bodywork: false,
+      });
+      setObservations('');
+      setInspectionPhotos({});
+    } catch (e: any) {
+      console.error("Erro em submitChecklist:", e);
+      const errorMessage = e?.message || e?.toString() || "Erro desconhecido";
+      alert(`Não foi possível iniciar o dia: ${errorMessage}`);
+      setIsAnalyzingAi(false);
+    }
+  };
+
+  const compressImage = (file: File, maxWidth = 800): Promise<Blob> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = (event) => {
+        const img = new Image();
+        img.src = event.target?.result as string;
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          const ratio = maxWidth / img.width;
+          canvas.width = maxWidth;
+          canvas.height = img.height * ratio;
+          const ctx = canvas.getContext('2d');
+          
+          if (!ctx) {
+            reject(new Error('Canvas context null'));
+            return;
+          }
+          
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          
+          // Watermark Anti-Fraude (Data, Hora, GPS)
+          const loc = lastLocationRef.current;
+          const dateStr = new Date().toLocaleString('pt-BR');
+          const coordsStr = loc ? `Lat: ${loc.lat.toFixed(6)}, Lng: ${loc.lng.toFixed(6)}` : 'GPS Indisponível';
+          const watermarkText = `${dateStr} | ${coordsStr}`;
+          
+          // Fundo escuro para destacar o texto
+          ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+          ctx.fillRect(0, canvas.height - 40, canvas.width, 40);
+          
+          // Texto branco
+          ctx.font = 'bold 14px sans-serif';
+          ctx.fillStyle = 'white';
+          ctx.fillText(watermarkText, 15, canvas.height - 15);
+
+          canvas.toBlob((blob) => {
+            if (blob) resolve(blob);
+            else reject(new Error('Canvas to Blob failed'));
+          }, 'image/jpeg', 0.7);
+        };
+      };
+      reader.onerror = error => reject(error);
+    });
+  };
+
+  const submitPOD = async () => {
+    if (!activeRoute || currentPODStopIndex === null || !activeRoute.stopDetails) return;
+    if (!podReceiverName.trim() || !podFile) {
+      alert("Nome e foto são obrigatórios.");
+      return;
+    }
+    
+    setIsSubmittingPOD(true);
+    try {
+      const compressedBlob = await compressImage(podFile);
+      let photoUrl = '';
+      let uploadSuccess = false;
+
+      // Tentativa de upload no Storage (apenas se o navegador disser que tem rede)
+      if (navigator.onLine) {
+        try {
+          const fileRef = ref(storage, `pod/${activeRoute.id}_${currentPODStopIndex}_${Date.now()}.jpg`);
+          // Promise.race para não deixar o Firebase travar infinitamente se a rede estiver instável
+          const uploadPromise = uploadBytes(fileRef, compressedBlob);
+          const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 8000));
+          
+          await Promise.race([uploadPromise, timeoutPromise]);
+          photoUrl = await getDownloadURL(fileRef);
+          uploadSuccess = true;
+        } catch (uploadError) {
+          console.warn("Falha no upload para o Storage, caindo para modo offline (Base64).", uploadError);
+          uploadSuccess = false;
+        }
+      }
+
+      // Se falhou o upload ou estamos declaradamente offline, salva em Base64 localmente
+      if (!uploadSuccess) {
+        const base64 = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.readAsDataURL(compressedBlob);
+          reader.onload = () => resolve(reader.result as string);
+          reader.onerror = error => reject(error);
+        });
+        photoUrl = base64;
+      }
+
+      const newStopDetails = [...activeRoute.stopDetails];
+      newStopDetails[currentPODStopIndex] = { 
+        ...newStopDetails[currentPODStopIndex], 
+        status: 'completed',
+        dropoffPhotoUrl: photoUrl,
+        dropoffReceiverName: podReceiverName
+      };
+
+      const allCompleted = newStopDetails.length > 0 && newStopDetails.every(s => s.status === 'completed' || s.status === 'issue');
+      
+      if (allCompleted) {
+        setSummaryRoute({ ...activeRoute, stopDetails: newStopDetails, status: 'completed' });
+        syncDriverStatus({ id: driverId, name: driverName }, 'active').catch(console.error);
+      }
+
+      // Fire and forget to not block UI when offline
+      update(activeRoute.id, { 
+        stopDetails: newStopDetails,
+        status: allCompleted ? 'completed' : (activeRoute.status === 'completed' ? 'in_progress' : activeRoute.status)
+      }).catch(console.error);
+      
+      if (newStopDetails[currentPODStopIndex].externalRequestId) {
+        updateExternalRequest(newStopDetails[currentPODStopIndex].externalRequestId, { status: 'completed' }).catch(console.error);
+      }
+      
+      setIsPODModalOpen(false);
+      setPodReceiverName('');
+      setPodFile(null);
+
+      if (!navigator.onLine) {
+        alert("Entrega salva offline. O comprovante será enviado ao servidor quando a conexão voltar.");
+      }
+    } catch (e: any) {
+      console.error(e);
+      alert("Erro ao registrar entrega: " + (e.message || e.toString()));
+    } finally {
+      setIsSubmittingPOD(false);
+    }
+  };
+
+
+  useEffect(() => {
+    if ('Notification' in window) {
+      setNotificationStatus(Notification.permission);
+    }
+  }, []);
+
+  const lastLocationRef = React.useRef<{lat: number, lng: number} | null>(null);
+
+  useEffect(() => {
+    let watchId: number;
+    let syncInterval: NodeJS.Timeout;
+
+    if ((driverStatus === 'active' || driverStatus === 'on_route') && driverId && navigator.geolocation) {
+      watchId = navigator.geolocation.watchPosition((position) => {
+        lastLocationRef.current = {
+          lat: position.coords.latitude,
+          lng: position.coords.longitude
+        };
+      }, (error) => {
+        console.warn("Erro ao obter localização do GPS:", error);
+      }, {
+        enableHighAccuracy: true,
+        maximumAge: 10000,
+        timeout: 10000
+      });
+
+      // Otimização: Só manda para o banco a cada 30 segundos, não a cada metro
+      syncInterval = setInterval(async () => {
+        if (lastLocationRef.current) {
+          try {
+            await setDoc(doc(db, 'drivers', driverId), {
+              location: lastLocationRef.current,
+              locationUpdatedAt: new Date().toISOString()
+            }, { merge: true });
+          } catch (e) {
+            console.error("Erro ao sincronizar localização:", e);
+          }
+        }
+      }, 30000);
+    }
+
+    return () => {
+      if (watchId) navigator.geolocation.clearWatch(watchId);
+      if (syncInterval) clearInterval(syncInterval);
+    };
+  }, [driverStatus, driverId]);
+
+  const wakeLockRef = React.useRef<any>(null);
+
+  useEffect(() => {
+    const requestWakeLock = async () => {
+      if ('wakeLock' in navigator) {
+        try {
+          wakeLockRef.current = await (navigator as any).wakeLock.request('screen');
+          console.log('Wake Lock ativo - Tela não vai apagar');
+        } catch (err) {
+          console.error(`Erro Wake Lock: ${err}`);
+        }
+      }
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && (driverStatus === 'active' || driverStatus === 'on_route')) {
+        requestWakeLock();
+      }
+    };
+
+    if (driverStatus === 'active' || driverStatus === 'on_route') {
+      requestWakeLock();
+      document.addEventListener('visibilitychange', handleVisibilityChange);
+    } else {
+      if (wakeLockRef.current !== null) {
+        wakeLockRef.current.release().catch(() => {});
+        wakeLockRef.current = null;
+      }
+    }
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      if (wakeLockRef.current !== null) {
+        wakeLockRef.current.release().catch(() => {});
+        wakeLockRef.current = null;
+      }
+    };
+  }, [driverStatus]);
+
+  const enableNotifications = async () => {
+    try {
+      const permission = await Notification.requestPermission();
+      setNotificationStatus(permission);
+      
+      if (permission === 'granted') {
+        const msg = await messaging();
+        if (msg) {
+          const token = await getToken(msg, { vapidKey: (import.meta as any).env.VITE_FIREBASE_VAPID_KEY });
+          console.log('FCM Token:', token);
+          
+          if (token && driverId) {
+            await setDoc(doc(db, 'drivers', driverId), { fcmToken: token }, { merge: true });
+          }
+          
+          onMessage(msg, (payload) => {
+            console.log('Message received. ', payload);
+            if (payload.notification) {
+               new Notification(payload.notification.title || 'Nova Notificação', {
+                 body: payload.notification.body,
+                 icon: '/icon.png'
+               });
+            }
+          });
+          
+          alert('Notificações ativadas com sucesso!');
+        } else {
+          alert('Este navegador não suporta notificações Push.');
+        }
+      }
+    } catch (error) {
+      console.error('Erro ao ativar notificações:', error);
+      alert('Erro ao ativar notificações. Verifique as configurações do navegador.');
+    }
+  };
+  
+  // Identify date and active/pending daily logs
+  const todayStr = new Date().toISOString().split('T')[0];
+  const unclosedPrevLogs = dailyLogs?.filter(l => l.driverId === driverId && l.status === 'active' && l.date < todayStr) || [];
+  const unclosedPrevLog = unclosedPrevLogs.length > 0 ? unclosedPrevLogs[0] : null;
+
+  const cleanDriverName = (driverName || '').trim().toLowerCase();
+  
+  const matchDriverName = (nameToMatch?: string) => {
+    if (!nameToMatch || !cleanDriverName) return false;
+    const nm = nameToMatch.trim().toLowerCase();
+    return nm === cleanDriverName || cleanDriverName.includes(nm) || nm.includes(cleanDriverName);
+  };
+
+  const activeTodayLog = !unclosedPrevLog
+    ? dailyLogs?.find(l => {
+        if (l.status !== 'active') return false;
+        if (l.driverId && driverId && l.driverId === driverId) return true;
+        return matchDriverName(l.driverName);
+      })
+    : null;
+
+  // Find if there's any route in progress
+  const activeRoute = routes?.find(r => r.status === 'in_progress' && matchDriverName(r.driver));
+  
+  // Filter pending routes (Blocked if unclosed previous day OR if today not checked in)
+  const pendingRoutes = (!unclosedPrevLog && activeTodayLog)
+    ? (routes?.filter(r => r.status === 'pending' && matchDriverName(r.driver)) || [])
+    : [];
+
+  useEffect(() => {
+    if (pendingRoutes.length > 0) {
+      const newRoutes = pendingRoutes.filter(r => !notifiedRoutes.includes(r.id));
+      if (newRoutes.length > 0) {
+        playNotificationSound();
+        setIncomingRoute(newRoutes[0]);
+        setNotifiedRoutes(prev => [...prev, ...newRoutes.map(r => r.id)]);
+      }
+    }
+  }, [pendingRoutes, notifiedRoutes]);
+
+  const handleAcceptRoute = async (routeId: string) => {
+    await update(routeId, { status: 'in_progress', driver: driverName });
+    await syncDriverStatus({ id: driverId, name: driverName }, 'on_route');
+  };
+
+  const handleRejectRoute = async (routeId: string) => {
+    await update(routeId, { status: 'issue', driver: 'Recusado' });
+  };
+
+  const handleCompleteStop = async (route: RouteItem, stopIndex: number) => {
+    try {
+      if (!route || !route.stopDetails) {
+        return;
+      }
+      
+      setCurrentPODStopIndex(stopIndex);
+      setIsPODModalOpen(true);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleIssueStop = (route: RouteItem, stopIndex: number) => {
+    setCurrentIssueStopIndex(stopIndex);
+    setIsIssueModalOpen(true);
+  };
+
+  const submitIssue = async () => {
+    if (!activeRoute || currentIssueStopIndex === null || !activeRoute.stopDetails) return;
+    
+    setIsSubmittingIssue(true);
+    try {
+      let photoUrl = '';
+      let uploadSuccess = false;
+      
+      if (issueFile) {
+        const compressedBlob = await compressImage(issueFile);
+        
+        if (navigator.onLine) {
+          try {
+            const fileRef = ref(storage, `issues/${activeRoute.id}_${currentIssueStopIndex}_${Date.now()}`);
+            const uploadPromise = uploadBytes(fileRef, compressedBlob);
+            const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 8000));
+            
+            await Promise.race([uploadPromise, timeoutPromise]);
+            photoUrl = await getDownloadURL(fileRef);
+            uploadSuccess = true;
+          } catch (uploadError) {
+            console.warn("Falha no upload para o Storage, caindo para modo offline (Base64).", uploadError);
+            uploadSuccess = false;
+          }
+        }
+
+        if (!uploadSuccess) {
+          const base64 = await new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.readAsDataURL(compressedBlob);
+            reader.onload = () => resolve(reader.result as string);
+            reader.onerror = error => reject(error);
+          });
+          photoUrl = base64;
+        }
+      }
+
+      const newStopDetails = [...activeRoute.stopDetails];
+      newStopDetails[currentIssueStopIndex] = { 
+        ...newStopDetails[currentIssueStopIndex], 
+        status: 'issue',
+        issueDescription: issueText,
+        issuePhotoUrl: photoUrl
+      };
+      
+      const allCompleted = newStopDetails.length > 0 && newStopDetails.every(s => s.status === 'completed' || s.status === 'issue');
+      
+      if (allCompleted) {
+        setSummaryRoute({ ...activeRoute, stopDetails: newStopDetails, status: 'completed' });
+      }
+
+      // Fire and forget to not block UI when offline
+      update(activeRoute.id, { 
+        stopDetails: newStopDetails,
+        status: allCompleted ? 'completed' : (activeRoute.status === 'completed' ? 'in_progress' : activeRoute.status)
+      }).catch(console.error);
+      
+      if (newStopDetails[currentIssueStopIndex].externalRequestId) {
+        updateExternalRequest(newStopDetails[currentIssueStopIndex].externalRequestId, { status: 'issue' }).catch(console.error);
+      }
+
+      // Reset state
+      setIsIssueModalOpen(false);
+      setCurrentIssueStopIndex(null);
+      setIssueText('');
+      setIssueFile(null);
+
+      if (!navigator.onLine) {
+        alert("Problema registrado offline. Será sincronizado com o servidor quando a conexão voltar.");
+      }
+    } catch (error) {
+      console.error("Error submitting issue:", error);
+      alert("Erro ao enviar o problema. Tente novamente.");
+    } finally {
+      setIsSubmittingIssue(false);
+    }
+  };
+
+  
+  const renderModals = () => {
+    return (
+      <>
+        {/* Vehicle Selection Modal */}
+        {showVehicleSelection && (
+          <div className="fixed inset-0 bg-slate-900/60 z-[60] flex flex-col p-4 backdrop-blur-sm">
+            <div className="bg-white rounded-2xl w-full max-w-md mx-auto shadow-2xl flex flex-col max-h-full overflow-hidden animate-in slide-in-from-bottom-4 duration-300">
+              <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+                <h3 className="font-bold text-lg text-slate-800">Escolha o Veículo</h3>
+                <button onClick={() => setShowVehicleSelection(false)} className="text-slate-400 p-1 rounded-lg hover:bg-slate-200">
+                  <X size={20} />
+                </button>
+              </div>
+              <div className="p-4 overflow-y-auto flex-1 space-y-3">
+                {vehicles?.filter(v => v.status === 'active').map(v => (
+                  <button 
+                    key={v.id} 
+                    onClick={() => handleVehicleSelect(v)}
+                    className="w-full flex items-center gap-4 p-4 border border-slate-200 rounded-xl hover:border-brand-cyan hover:bg-brand-cyan/5 transition-colors text-left"
+                  >
+                    <div className="w-12 h-12 bg-slate-100 rounded-xl flex items-center justify-center text-slate-500">
+                      {v.type === 'motorcycle' ? <CarFront size={24} /> : <Truck size={24} />}
+                    </div>
+                    <div>
+                      <div className="font-bold text-slate-800">{v.plate}</div>
+                      <div className="text-sm text-slate-500">{v.brand} {v.model}</div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Checklist Modal */}
+        {showChecklist && selectedVehicle && (
+          <div className="fixed inset-0 bg-slate-900/60 z-[70] flex flex-col p-4 backdrop-blur-sm">
+            <div className="bg-white rounded-2xl w-full max-w-lg mx-auto shadow-2xl flex flex-col max-h-full overflow-hidden animate-in zoom-in-95 duration-300">
+              <div className="p-4 border-b border-slate-100 bg-brand-cyan text-white">
+                <h3 className="font-bold text-lg">Checklist Diário</h3>
+                <p className="text-white/80 text-sm">Veículo: {selectedVehicle.plate}</p>
+              </div>
+              
+              <div className="p-5 overflow-y-auto flex-1 space-y-6 bg-slate-50">
+                <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+                  <label className="block text-sm font-semibold text-slate-700 mb-2">KM Atual (Inicial)</label>
+                  <input 
+                    type="number" 
+                    value={checklistInitialKm}
+                    onChange={(e) => setChecklistInitialKm(parseInt(e.target.value) || 0)}
+                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-brand-cyan focus:ring-1 focus:ring-brand-cyan"
+                  />
+                </div>
+
+                {/* VISTORIA FOTOGRÁFICA DE FROTA */}
+                {requiresPhotoInspection(selectedVehicle) && (
+                  <div className="bg-gradient-to-br from-cyan-50 to-blue-50 p-4 rounded-xl border-2 border-brand-cyan/40 shadow-sm space-y-3">
+                    <div className="flex items-center gap-2 text-brand-cyan font-bold text-sm">
+                      <Camera size={20} />
+                      <span>
+                        Vistoria Fotográfica de Frota ({
+                          inspectionFrequencyDays === 1 
+                            ? 'Todos os Dias' 
+                            : inspectionFrequencyDays === 7 
+                            ? 'Ciclo Semanal' 
+                            : `Ciclo ${inspectionFrequencyDays} Dias`
+                        })
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-600">
+                      Tire 4 fotos do veículo na mesma posição do gabarito. Nossa IA avaliará a limpeza e detecção de avarias.
+                    </p>
+                    <div className="grid grid-cols-2 gap-3">
+                      {(['front', 'back', 'left', 'right'] as const).map((pos) => {
+                        const labels = {
+                          front: 'Frente',
+                          back: 'Traseira',
+                          left: 'Lat. Esquerda',
+                          right: 'Lat. Direita'
+                        };
+                        const refPhoto = selectedVehicle.referencePhotos?.[pos];
+                        const capturedPhoto = inspectionPhotos[pos];
+                        return (
+                          <div key={pos} className="bg-white rounded-xl p-2.5 border border-slate-200 flex flex-col items-center text-center">
+                            <span className="text-xs font-bold text-slate-800 mb-1.5">{labels[pos]}</span>
+                            {refPhoto && (
+                              <div className="mb-2 w-full">
+                                <span className="text-[10px] text-slate-400 block mb-0.5">Gabarito Ideal:</span>
+                                <img src={refPhoto} alt="Gabarito" className="w-full h-14 object-cover rounded-md border border-slate-200" />
+                              </div>
+                            )}
+                            {capturedPhoto ? (
+                              <div className="relative w-full h-20 mt-1">
+                                <img src={capturedPhoto} alt="Captura" className="w-full h-full object-cover rounded-lg border-2 border-emerald-500" />
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const updated = { ...inspectionPhotos };
+                                    delete updated[pos];
+                                    setInspectionPhotos(updated);
+                                  }}
+                                  className="absolute top-1 right-1 bg-red-600/80 text-white p-1 rounded-full text-xs"
+                                >
+                                  <X size={12} />
+                                </button>
+                                <span className="text-[10px] font-bold text-emerald-600 block mt-1">✓ Capturado</span>
+                              </div>
+                            ) : (
+                              <label className="w-full py-3 border-2 border-dashed border-brand-cyan/60 rounded-lg flex flex-col items-center justify-center cursor-pointer hover:bg-cyan-50/50 transition-colors">
+                                <Camera size={18} className="text-brand-cyan mb-1" />
+                                <span className="text-[11px] font-bold text-brand-cyan">Tirar Foto</span>
+                                <input
+                                  type="file"
+                                  accept="image/*"
+                                  capture="environment"
+                                  className="hidden"
+                                  onChange={(e) => handleDriverCapturePhoto(e, pos)}
+                                />
+                              </label>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* 1. SEGURANÇA */}
+                <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+                  <h4 className="font-bold text-slate-800 mb-3 flex items-center gap-2"><ShieldCheck size={18} className="text-emerald-500"/> 1. Segurança</h4>
+                  <div className="space-y-3">
+                    <label className="flex items-center gap-3">
+                      <input type="checkbox" checked={checklist.extinguisher} onChange={e => setChecklist({...checklist, extinguisher: e.target.checked})} className="w-5 h-5 rounded border-slate-300 text-brand-cyan focus:ring-brand-cyan" />
+                      <span className="text-sm text-slate-700">Extintor de incêndio (validade/manômetro verde)</span>
+                    </label>
+                    <label className="flex items-center gap-3">
+                      <input type="checkbox" checked={checklist.tools} onChange={e => setChecklist({...checklist, tools: e.target.checked})} className="w-5 h-5 rounded border-slate-300 text-brand-cyan focus:ring-brand-cyan" />
+                      <span className="text-sm text-slate-700">Kit ferramentas (Estepe, macaco, chave, triângulo)</span>
+                    </label>
+                    <label className="flex items-center gap-3">
+                      <input type="checkbox" checked={checklist.seatbelt} onChange={e => setChecklist({...checklist, seatbelt: e.target.checked})} className="w-5 h-5 rounded border-slate-300 text-brand-cyan focus:ring-brand-cyan" />
+                      <span className="text-sm text-slate-700">Cinto de segurança funcionando</span>
+                    </label>
+                  </div>
+                </div>
+
+                {/* 2. MECÂNICA E NÍVEIS */}
+                <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+                  <h4 className="font-bold text-slate-800 mb-3 flex items-center gap-2"><Wrench size={18} className="text-blue-500"/> 2. Mecânica e Níveis</h4>
+                  <div className="space-y-3">
+                    <label className="flex items-center gap-3">
+                      <input type="checkbox" checked={checklist.tires} onChange={e => setChecklist({...checklist, tires: e.target.checked})} className="w-5 h-5 rounded border-slate-300 text-brand-cyan focus:ring-brand-cyan" />
+                      <span className="text-sm text-slate-700">Pneus (calibragem e sulcos)</span>
+                    </label>
+                    <label className="flex items-center gap-3">
+                      <input type="checkbox" checked={checklist.oil} onChange={e => setChecklist({...checklist, oil: e.target.checked})} className="w-5 h-5 rounded border-slate-300 text-brand-cyan focus:ring-brand-cyan" />
+                      <span className="text-sm text-slate-700">Nível de óleo do motor</span>
+                    </label>
+                    <label className="flex items-center gap-3">
+                      <input type="checkbox" checked={checklist.water} onChange={e => setChecklist({...checklist, water: e.target.checked})} className="w-5 h-5 rounded border-slate-300 text-brand-cyan focus:ring-brand-cyan" />
+                      <span className="text-sm text-slate-700">Nível da água/arrefecimento</span>
+                    </label>
+                    <label className="flex items-center gap-3">
+                      <input type="checkbox" checked={checklist.brakes} onChange={e => setChecklist({...checklist, brakes: e.target.checked})} className="w-5 h-5 rounded border-slate-300 text-brand-cyan focus:ring-brand-cyan" />
+                      <span className="text-sm text-slate-700">Sistema de freios (teste de pedal)</span>
+                    </label>
+                    <label className="flex items-center gap-3">
+                      <input type="checkbox" checked={checklist.dashboardLights} onChange={e => setChecklist({...checklist, dashboardLights: e.target.checked})} className="w-5 h-5 rounded border-slate-300 text-brand-cyan focus:ring-brand-cyan" />
+                      <span className="text-sm text-slate-700">Painel (sem luzes de alerta acesas)</span>
+                    </label>
+                  </div>
+                </div>
+
+                {/* 3. ILUMINAÇÃO */}
+                <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+                  <h4 className="font-bold text-slate-800 mb-3 flex items-center gap-2"><Eye size={18} className="text-amber-500"/> 3. Iluminação e Visibilidade</h4>
+                  <div className="space-y-3">
+                    <label className="flex items-center gap-3">
+                      <input type="checkbox" checked={checklist.headlights} onChange={e => setChecklist({...checklist, headlights: e.target.checked})} className="w-5 h-5 rounded border-slate-300 text-brand-cyan focus:ring-brand-cyan" />
+                      <span className="text-sm text-slate-700">Faróis (alto e baixo)</span>
+                    </label>
+                    <label className="flex items-center gap-3">
+                      <input type="checkbox" checked={checklist.turnSignals} onChange={e => setChecklist({...checklist, turnSignals: e.target.checked})} className="w-5 h-5 rounded border-slate-300 text-brand-cyan focus:ring-brand-cyan" />
+                      <span className="text-sm text-slate-700">Setas (dianteiras e traseiras)</span>
+                    </label>
+                    <label className="flex items-center gap-3">
+                      <input type="checkbox" checked={checklist.brakeLights} onChange={e => setChecklist({...checklist, brakeLights: e.target.checked})} className="w-5 h-5 rounded border-slate-300 text-brand-cyan focus:ring-brand-cyan" />
+                      <span className="text-sm text-slate-700">Luz de freio e luz de ré</span>
+                    </label>
+                    <label className="flex items-center gap-3">
+                      <input type="checkbox" checked={checklist.mirrors} onChange={e => setChecklist({...checklist, mirrors: e.target.checked})} className="w-5 h-5 rounded border-slate-300 text-brand-cyan focus:ring-brand-cyan" />
+                      <span className="text-sm text-slate-700">Retrovisores (ajustados e íntegros)</span>
+                    </label>
+                    <label className="flex items-center gap-3">
+                      <input type="checkbox" checked={checklist.wipers} onChange={e => setChecklist({...checklist, wipers: e.target.checked})} className="w-5 h-5 rounded border-slate-300 text-brand-cyan focus:ring-brand-cyan" />
+                      <span className="text-sm text-slate-700">Limpadores e esguichos</span>
+                    </label>
+                  </div>
+                </div>
+
+                {/* 4. COMPARTIMENTO DE CARGA */}
+                <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+                  <h4 className="font-bold text-slate-800 mb-3 flex items-center gap-2"><Box size={18} className="text-indigo-500"/> 4. Compartimento de Carga</h4>
+                  <div className="space-y-3">
+                    <label className="flex items-center gap-3">
+                      <input type="checkbox" checked={checklist.cleaning} onChange={e => setChecklist({...checklist, cleaning: e.target.checked})} className="w-5 h-5 rounded border-slate-300 text-brand-cyan focus:ring-brand-cyan" />
+                      <span className="text-sm text-slate-700">Limpeza interna</span>
+                    </label>
+                    <label className="flex items-center gap-3">
+                      <input type="checkbox" checked={checklist.doors} onChange={e => setChecklist({...checklist, doors: e.target.checked})} className="w-5 h-5 rounded border-slate-300 text-brand-cyan focus:ring-brand-cyan" />
+                      <span className="text-sm text-slate-700">Vedação e travas</span>
+                    </label>
+                    <label className="flex items-center gap-3">
+                      <input type="checkbox" checked={checklist.structure} onChange={e => setChecklist({...checklist, structure: e.target.checked})} className="w-5 h-5 rounded border-slate-300 text-brand-cyan focus:ring-brand-cyan" />
+                      <span className="text-sm text-slate-700">Estrutura interna</span>
+                    </label>
+                    <label className="flex items-center gap-3">
+                      <input type="checkbox" checked={checklist.tieDowns} onChange={e => setChecklist({...checklist, tieDowns: e.target.checked})} className="w-5 h-5 rounded border-slate-300 text-brand-cyan focus:ring-brand-cyan" />
+                      <span className="text-sm text-slate-700">Equipamentos de amarração</span>
+                    </label>
+                  </div>
+                </div>
+
+                {/* 5. LATARIA E OBS */}
+                <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+                  <h4 className="font-bold text-slate-800 mb-3 flex items-center gap-2"><AlertCircle size={18} className="text-purple-500"/> 5. Lataria e Observações</h4>
+                  <div className="space-y-4">
+                    <label className="flex items-center gap-3">
+                      <input type="checkbox" checked={checklist.bodywork} onChange={e => setChecklist({...checklist, bodywork: e.target.checked})} className="w-5 h-5 rounded border-slate-300 text-brand-cyan focus:ring-brand-cyan" />
+                      <span className="text-sm text-slate-700">Estado geral da lataria</span>
+                    </label>
+                    
+                    <div>
+                      <label className="block text-sm font-semibold text-slate-700 mb-2">Observações</label>
+                      <textarea
+                        value={observations}
+                        onChange={(e) => setObservations(e.target.value)}
+                        placeholder="Algum problema encontrado? Detalhe aqui..."
+                        className="w-full p-3 border border-slate-200 rounded-xl text-sm outline-none focus:border-brand-cyan min-h-[80px]"
+                      ></textarea>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-4 border-t border-slate-100 flex gap-3 bg-white">
+                <button 
+                  onClick={() => setShowChecklist(false)}
+                  className="flex-1 py-3.5 bg-slate-100 text-slate-700 rounded-xl font-bold"
+                >
+                  Cancelar
+                </button>
+                <button 
+                  onClick={submitChecklist}
+                  disabled={isAnalyzingAi}
+                  className="flex-1 py-3.5 bg-brand-cyan hover:bg-brand-blue disabled:opacity-50 text-white rounded-xl font-bold transition-colors flex items-center justify-center gap-2"
+                >
+                  {isAnalyzingAi ? (
+                    <>
+                      <Loader2 size={18} className="animate-spin" />
+                      <span>Analisando IA...</span>
+                    </>
+                  ) : (
+                    <span>Finalizar</span>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Modal de Escolha de GPS */}
+        {navTarget && (
+          <div className="fixed inset-0 bg-slate-900/60 z-[80] flex items-end sm:items-center justify-center p-4 backdrop-blur-sm">
+            <div className="bg-white rounded-t-2xl sm:rounded-2xl w-full max-w-sm mx-auto shadow-2xl flex flex-col overflow-hidden animate-in slide-in-from-bottom-4 duration-300">
+              <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+                <h3 className="font-bold text-lg text-slate-800">Abrir Navegação</h3>
+                <button onClick={() => setNavTarget(null)} className="text-slate-400 p-1 rounded-lg hover:bg-slate-200">
+                  <X size={20} />
+                </button>
+              </div>
+              <div className="p-6 space-y-4">
+                <button 
+                  onClick={() => setNavPreferenceAndOpen('maps', navTarget)} 
+                  className="w-full flex items-center justify-center gap-3 py-4 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-xl font-bold transition-colors border border-blue-200"
+                >
+                  <Navigation size={22} /> Google Maps
+                </button>
+                <button 
+                  onClick={() => setNavPreferenceAndOpen('waze', navTarget)} 
+                  className="w-full flex items-center justify-center gap-3 py-4 bg-cyan-50 hover:bg-cyan-100 text-cyan-700 rounded-xl font-bold transition-colors border border-cyan-200"
+                >
+                  <Navigation size={22} /> Waze
+                </button>
+                <div className="text-center pt-2">
+                  <span className="text-xs text-slate-400">Sua escolha será salva como padrão.</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+{/* Modal de Resumo de Rota */}
+      {summaryRoute && (
+        <div className="fixed inset-0 bg-emerald-900/80 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+          <div className="bg-white rounded-3xl w-full max-w-sm shadow-2xl overflow-hidden animate-in zoom-in-95 duration-500">
+            <div className="bg-emerald-500 p-8 text-center text-white relative overflow-hidden">
+              <div className="absolute top-0 left-0 w-full h-full bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-10"></div>
+              <div className="w-20 h-20 bg-white/20 rounded-full flex items-center justify-center mx-auto mb-4 relative z-10 backdrop-blur-md border border-white/30">
+                <CheckCircle size={40} className="text-white drop-shadow-md" />
+              </div>
+              <h2 className="text-3xl font-bold mb-2 relative z-10 drop-shadow-sm">Rota Concluída!</h2>
+              <p className="text-emerald-50 font-medium relative z-10">Ótimo trabalho nas entregas de hoje.</p>
+            </div>
+            
+            <div className="p-6 space-y-5 bg-slate-50">
+              <div className="flex gap-4">
+                <div className="flex-1 bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex flex-col items-center justify-center">
+                  <div className="text-slate-500 text-xs font-bold uppercase tracking-wider mb-1">Total de Paradas</div>
+                  <div className="text-3xl font-black text-slate-800">{summaryRoute.stops}</div>
+                </div>
+                <div className="flex-1 bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex flex-col items-center justify-center">
+                  <div className="text-slate-500 text-xs font-bold uppercase tracking-wider mb-1">KM Total</div>
+                  <div className="text-3xl font-black text-slate-800">{summaryRoute.distance}<span className="text-sm font-bold text-slate-400 ml-1">km</span></div>
+                </div>
+              </div>
+              
+              <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100">
+                <div className="flex justify-between items-center mb-2">
+                  <span className="text-slate-500 font-medium text-sm">Entregues:</span>
+                  <span className="font-bold text-emerald-600">
+                    {summaryRoute.stopDetails?.filter(s => s.status === 'completed').length || 0}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-500 font-medium text-sm">Problemas:</span>
+                  <span className="font-bold text-red-500">
+                    {summaryRoute.stopDetails?.filter(s => s.status === 'issue').length || 0}
+                  </span>
+                </div>
+              </div>
+
+              <button
+                onClick={() => setSummaryRoute(null)}
+                className="w-full py-4 mt-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl font-bold transition-all active:scale-[0.98] shadow-lg shadow-slate-900/20"
+              >
+                Voltar ao Início
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+{/* Modal de Problema */}
+      {isIssueModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl w-full max-w-sm shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="bg-red-500 p-4 text-white flex justify-between items-center">
+              <h3 className="font-bold text-lg flex items-center gap-2">
+                <AlertTriangle size={20} /> Relatar Problema
+              </h3>
+              <button 
+                onClick={() => setIsIssueModalOpen(false)}
+                className="text-white/80 hover:text-white hover:bg-white/10 p-1.5 rounded-lg transition-colors"
+              >
+                <X size={20} />
+              </button>
+            </div>
+            
+            <div className="p-5 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">O que aconteceu?</label>
+                <textarea
+                  value={issueText}
+                  onChange={(e) => setIssueText(e.target.value)}
+                  placeholder="Descreva o problema..."
+                  className="w-full border border-slate-200 rounded-xl p-3 text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent min-h-[100px] resize-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">Anexar Foto (Opcional)</label>
+                <div className="flex gap-2">
+                  <label className="flex-1 flex flex-col items-center justify-center gap-2 py-4 border-2 border-dashed border-slate-200 rounded-xl cursor-pointer hover:bg-slate-50 hover:border-slate-300 transition-colors">
+                    <Camera size={24} className="text-slate-400" />
+                    <span className="text-xs font-medium text-slate-500">Tirar Foto</span>
+                    <input 
+                      type="file" 
+                      accept="image/*" 
+                      capture="environment"
+                      className="hidden" 
+                      onChange={(e) => setIssueFile(e.target.files?.[0] || null)}
+                    />
+                  </label>
+                  <label className="flex-1 flex flex-col items-center justify-center gap-2 py-4 border-2 border-dashed border-slate-200 rounded-xl cursor-pointer hover:bg-slate-50 hover:border-slate-300 transition-colors">
+                    <ImageIcon size={24} className="text-slate-400" />
+                    <span className="text-xs font-medium text-slate-500">Galeria</span>
+                    <input 
+                      type="file" 
+                      accept="image/*" 
+                      className="hidden" 
+                      onChange={(e) => setIssueFile(e.target.files?.[0] || null)}
+                    />
+                  </label>
+                </div>
+                {issueFile && (
+                  <div className="mt-2 text-sm text-emerald-600 flex items-center gap-1 font-medium bg-emerald-50 p-2 rounded-lg">
+                    <CheckCircle size={16} /> Foto selecionada: {issueFile.name}
+                  </div>
+                )}
+              </div>
+
+              <button
+                onClick={submitIssue}
+                disabled={isSubmittingIssue}
+                className="w-full py-3.5 bg-red-500 hover:bg-red-600 text-white rounded-xl font-bold transition-colors disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              >
+                {isSubmittingIssue ? (
+                  <>
+                    <Loader2 size={20} className="animate-spin" />
+                    Enviando...
+                  </>
+                ) : (
+                  'Confirmar Problema'
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+{incomingRoute && (
+        <div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl w-full max-w-sm shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="bg-brand-cyan p-6 text-center text-white">
+              <div className="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center mx-auto mb-4">
+                <BellRing size={32} className="animate-bounce" />
+              </div>
+              <h2 className="text-2xl font-bold mb-1">Nova Rota!</h2>
+              <p className="text-brand-cyan/20 text-white/80 font-medium">Você tem uma nova solicitação</p>
+            </div>
+            <div className="p-6 space-y-4">
+              <div className="flex justify-between items-center bg-slate-50 p-3 rounded-xl border border-slate-100">
+                <span className="text-slate-500 font-medium">Identificação</span>
+                <span className="font-bold text-slate-800">#{formatRouteId(incomingRoute)}</span>
+              </div>
+              <div className="flex justify-between items-center bg-slate-50 p-3 rounded-xl border border-slate-100">
+                <span className="text-slate-500 font-medium">Paradas</span>
+                <span className="font-bold text-slate-800">{incomingRoute.stops}</span>
+              </div>
+              <div className="flex justify-between items-center bg-slate-50 p-3 rounded-xl border border-slate-100">
+                <span className="text-slate-500 font-medium">Distância</span>
+                <span className="font-bold text-slate-800">{incomingRoute.distance} km</span>
+              </div>
+            </div>
+            <div className="p-4 bg-slate-50 border-t border-slate-100 flex gap-3">
+              <button 
+                onClick={() => {
+                  handleAcceptRoute(incomingRoute.id);
+                  setIncomingRoute(null);
+                }}
+                className="flex-1 py-3.5 bg-gradient-to-r from-brand-cyan to-brand-blue text-white rounded-xl font-bold active:scale-[0.98] transition-transform flex items-center justify-center gap-2 shadow-md shadow-brand-blue/20"
+              >
+                <CheckCircle size={18} /> Aceitar
+              </button>
+              <button 
+                onClick={() => {
+                  handleRejectRoute(incomingRoute.id);
+                  setIncomingRoute(null);
+                }}
+                className="px-5 py-3.5 bg-white border border-slate-200 text-slate-600 rounded-xl font-bold active:scale-[0.98] transition-transform hover:bg-slate-50 flex items-center justify-center"
+              >
+                <XCircle size={18} />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+{isPODModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex flex-col justify-end animate-in fade-in" style={{ zIndex: 9999 }}>
+          <div className="bg-white rounded-t-3xl w-full max-h-[90vh] overflow-y-auto animate-in slide-in-from-bottom-full duration-300 relative" style={{ zIndex: 10000 }}>
+            <div className="sticky top-0 bg-white/80 backdrop-blur-xl border-b border-slate-100 px-6 py-4 flex justify-between items-center rounded-t-3xl z-10">
+              <h2 className="text-xl font-bold text-slate-800">Comprovante de Entrega</h2>
+              <button 
+                onClick={() => setIsPODModalOpen(false)}
+                className="p-2 -mr-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full transition-colors"
+              >
+                <X size={24} />
+              </button>
+            </div>
+            
+            <div className="p-6 space-y-6">
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-2">Nome do Recebedor</label>
+                <input 
+                  type="text" 
+                  required
+                  value={podReceiverName}
+                  onChange={(e) => setPodReceiverName(e.target.value)}
+                  placeholder="Quem recebeu a mercadoria?"
+                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:border-brand-cyan focus:ring-1 focus:ring-brand-cyan outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-2">Foto Comprovante</label>
+                <div className="flex gap-4">
+                  <div className="flex-1">
+                    <input 
+                      type="file" 
+                      accept="image/*"
+                      capture="environment"
+                      id="pod-photo"
+                      className="hidden"
+                      onChange={(e) => {
+                        if (e.target.files && e.target.files[0]) {
+                          setPodFile(e.target.files[0]);
+                        }
+                      }}
+                    />
+                    <label 
+                      htmlFor="pod-photo"
+                      className="flex items-center justify-center gap-2 w-full py-3 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-xl font-semibold active:scale-[0.98] transition-transform cursor-pointer"
+                    >
+                      <Camera size={20} /> Tirar Foto
+                    </label>
+                  </div>
+                </div>
+                {podFile && (
+                  <div className="mt-3 text-sm text-emerald-600 flex items-center gap-1.5 font-medium">
+                    <CheckCircle size={16} /> Foto anexada: {podFile.name}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="p-6 border-t border-slate-100 bg-slate-50/50">
+              <button
+                onClick={submitPOD}
+                disabled={isSubmittingPOD}
+                className="w-full flex justify-center items-center gap-2 bg-emerald-500 text-white font-bold py-3.5 px-4 rounded-xl hover:bg-emerald-600 active:scale-[0.98] transition-transform disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
+              >
+                {isSubmittingPOD ? (
+                  <><Loader2 size={20} className="animate-spin" /> Salvando...</>
+                ) : (
+                  <><CheckCircle size={20} /> Confirmar Entrega</>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      </>
+    );
+  };
+
+  const formatRouteId = (route: RouteItem) => {
+    if (route.routeNumber) {
+      return String(route.routeNumber).padStart(7, '0');
+    }
+    return route.id.slice(0, 8).toUpperCase();
+  };
+
+  if (activeRoute) {
+    return (
+      <div className="flex flex-col min-h-screen bg-slate-50 font-sans pb-20">
+        {renderModals()}
+        <div className="bg-white shadow-sm p-4 sticky top-0 z-10 border-b border-slate-200">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-brand-cyan/10 rounded-full flex items-center justify-center text-brand-cyan">
+                <Truck size={24} />
+              </div>
+              <div>
+                <h1 className="text-lg font-bold text-slate-800">Rota #{formatRouteId(activeRoute)}</h1>
+                <p className="text-sm text-slate-500 font-medium">Em andamento</p>
+              </div>
+            </div>
+            
+            {localStorage.getItem('navAppPref') && (
+              <button 
+                onClick={() => { localStorage.removeItem('navAppPref'); alert('Sua preferência de GPS foi resetada.'); }}
+                className="text-[10px] sm:text-xs text-slate-400 font-medium hover:text-slate-600 underline"
+              >
+                Trocar GPS
+              </button>
+            )}
+          </div>
+          
+          <div className="mt-4 flex gap-4 text-sm">
+            <div className="flex-1 bg-slate-50 p-3 rounded-xl border border-slate-100">
+              <div className="text-slate-500 text-xs mb-1 font-medium">Progresso</div>
+              <div className="font-semibold text-slate-800">
+                {activeRoute.stopDetails?.filter(s => s.status === 'completed').length || 0} de {activeRoute.stops}
+              </div>
+            </div>
+            <div className="flex-1 bg-slate-50 p-3 rounded-xl border border-slate-100">
+              <div className="text-slate-500 text-xs mb-1 font-medium">Distância</div>
+              <div className="font-semibold text-slate-800">{activeRoute.distance} km</div>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex-1 p-4 space-y-4">
+          {notificationStatus === 'default' && (
+            <div className="mb-6 bg-gradient-to-r from-blue-500 to-cyan-500 rounded-2xl p-4 text-white shadow-md flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-white/20 rounded-full">
+                  <BellRing size={20} className="text-white" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-sm">Ative as Notificações</h3>
+                  <p className="text-xs text-blue-100 mt-0.5">Receba alertas em tempo real</p>
+                </div>
+              </div>
+              <button 
+                onClick={enableNotifications}
+                className="px-4 py-2 bg-white text-blue-600 rounded-xl font-bold text-sm shadow-sm active:scale-95 transition-transform"
+              >
+                Ativar
+              </button>
+            </div>
+          )}
+          <h2 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-2">Paradas</h2>
+          {activeRoute.stopDetails?.map((stop, index) => {
+            const isCompleted = stop.status === 'completed';
+            const isIssue = stop.status === 'issue';
+            const isColeta = stop.type?.trim().toLowerCase() === 'coleta';
+            
+            return (
+              <div key={stop.id || index} className={`bg-white rounded-2xl p-4 shadow-sm border ${isCompleted ? 'border-emerald-200 bg-emerald-50/30' : isIssue ? 'border-red-200 bg-red-50/30' : 'border-slate-200'}`}>
+                <div className="flex items-start gap-3">
+                  <div className={`mt-1 flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-white text-xs font-bold ${
+                    isCompleted ? 'bg-emerald-500' : isIssue ? 'bg-red-500' : 'bg-slate-300'
+                  }`}>
+                    {isCompleted ? <CheckCircle size={14} /> : isIssue ? <AlertTriangle size={14} /> : index + 1}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="mb-1">
+                      <span className="text-xs font-bold px-2 py-0.5 rounded bg-slate-100 text-slate-600 mb-1 inline-block uppercase">
+                        {isColeta ? 'COLETA' : 'ENTREGA'}
+                      </span>
+                      <h3 className={`font-semibold text-base ${isCompleted ? 'text-emerald-900 line-through opacity-70' : isIssue ? 'text-red-900' : 'text-slate-800'}`}>
+                        {stop.address}
+                      </h3>
+                    </div>
+                    
+                    {(stop.orderNumber || stop.customerName || stop.customerPhone || stop.observation) && (
+                      <div className={`mt-3 p-3 rounded-xl text-sm ${isCompleted ? 'bg-emerald-100/50' : isIssue ? 'bg-red-100/50' : 'bg-slate-50 border border-slate-100'}`}>
+                        <div className="font-semibold text-slate-800 mb-2 border-b border-slate-200/50 pb-2">Resumo do Pedido</div>
+                        <div className="space-y-1.5 text-slate-600">
+                          {stop.orderNumber && <div className="flex justify-between"><span className="text-slate-400">Nº Pedido / OS:</span> <span className="font-medium text-slate-700">{stop.orderNumber}</span></div>}
+                          {stop.customerName && <div className="flex justify-between"><span className="text-slate-400">Nome:</span> <span className="font-medium text-slate-700">{stop.customerName}</span></div>}
+                          {stop.customerPhone && (
+                            <div className="flex justify-between items-center">
+                              <span className="text-slate-400">Telefone:</span> 
+                              <a href={`tel:${stop.customerPhone.replace(/\\D/g, '')}`} className="font-medium text-brand-cyan hover:underline flex items-center gap-1">
+                                {stop.customerPhone}
+                              </a>
+                            </div>
+                          )}
+                          {stop.observation && (
+                            <div className="mt-2 pt-2 border-t border-slate-200/50">
+                              <span className="text-slate-400 block text-xs mb-1">Observação:</span>
+                              <span className="text-slate-700 italic">{stop.observation}</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    
+                    {!isCompleted && !isIssue && (
+                      <div className="mt-4 flex flex-col gap-2">
+                        <button 
+                          onClick={() => handleNavigate(stop.address)}
+                          className="flex items-center justify-center gap-2 w-full py-3 bg-blue-50 text-blue-700 rounded-xl font-semibold active:scale-[0.98] transition-transform"
+                        >
+                          <Navigation size={18} /> Navegar
+                        </button>
+                        <div className="flex gap-2 mt-2">
+                          <button 
+                            onClick={() => handleCompleteStop(activeRoute, index)}
+                            className="flex-1 flex items-center justify-center gap-2 py-3 bg-emerald-500 text-white rounded-xl font-semibold active:scale-[0.98] transition-transform shadow-sm"
+                          >
+                            <CheckCircle size={18} /> {isColeta ? 'Coletado' : 'Entregue'}
+                          </button>
+                          <button 
+                            onClick={() => handleIssueStop(activeRoute, index)}
+                            className="flex-1 flex items-center justify-center gap-2 py-3 bg-red-50 text-red-600 rounded-xl font-semibold active:scale-[0.98] transition-transform"
+                          >
+                            <AlertTriangle size={18} /> Problema
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        
+      
+
+      
+
+      
+</div>
+      </div>
+    );
+  }
+
+  const renderEndOfDaySummary = () => {
+    if (!showEndOfDay) return null;
+    
+    const todayStr = new Date().toISOString().split('T')[0];
+    const todaysRoutes = (routes || []).filter(r => 
+      matchDriverName(r.driver) && 
+      r.status === 'completed' && 
+      (r.date === todayStr || (r as any).createdAt?.includes(todayStr) || true) // temporary fallback to all completed if date missing
+    );
+
+    const totalRoutes = todaysRoutes.length;
+    const totalStops = todaysRoutes.reduce((acc, curr) => acc + (curr.stops || 0), 0);
+    const totalDistance = todaysRoutes.reduce((acc, curr) => acc + (curr.distance || 0), 0);
+    
+    const totalTimeMins = todaysRoutes.reduce((acc, curr) => {
+      const match = curr.estimatedTime?.match(/(\d+)/);
+      const mins = match ? parseInt(match[1], 10) : 0;
+      return acc + (curr.estimatedTime?.includes('hora') || curr.estimatedTime?.includes('hour') ? mins * 60 : mins);
+    }, 0);
+    
+    const hours = Math.floor(totalTimeMins / 60);
+    const mins = totalTimeMins % 60;
+    const timeStr = hours > 0 ? `${hours}h ${mins}m` : `${mins} min`;
+
+    return (
+      <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div className="bg-white w-full max-w-sm rounded-3xl overflow-hidden shadow-2xl animate-in slide-in-from-bottom-10 fade-in duration-300">
+          <div className="bg-indigo-600 p-6 text-center text-white">
+            <div className="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center mx-auto mb-4">
+              <CheckCircle size={32} className="text-white" />
+            </div>
+            <h2 className="text-2xl font-bold">Fim de Expediente</h2>
+            <p className="text-indigo-100 mt-1 opacity-90">Bom descanso, {driverName?.split(' ')[0]}!</p>
+          </div>
+          
+          <div className="p-6">
+            <h3 className="font-bold text-slate-800 mb-4 text-center">Seu Resumo de Hoje</h3>
+            
+            <div className="grid grid-cols-2 gap-3 mb-6">
+              <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 flex flex-col items-center">
+                <Package size={20} className="text-blue-500 mb-1" />
+                <span className="text-2xl font-bold text-slate-800">{totalRoutes}</span>
+                <span className="text-xs text-slate-500 font-medium uppercase tracking-wider">Rotas</span>
+              </div>
+              <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 flex flex-col items-center">
+                <MapPin size={20} className="text-emerald-500 mb-1" />
+                <span className="text-2xl font-bold text-slate-800">{totalStops}</span>
+                <span className="text-xs text-slate-500 font-medium uppercase tracking-wider">Entregas</span>
+              </div>
+              <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 flex flex-col items-center">
+                <Clock size={20} className="text-amber-500 mb-1" />
+                <span className="text-xl font-bold text-slate-800">{timeStr}</span>
+                <span className="text-xs text-slate-500 font-medium uppercase tracking-wider">Tempo</span>
+              </div>
+              <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 flex flex-col items-center">
+                <Navigation size={20} className="text-indigo-500 mb-1" />
+                <span className="text-xl font-bold text-slate-800">{totalDistance.toFixed(1)} <span className="text-sm">km</span></span>
+                <span className="text-xs text-slate-500 font-medium uppercase tracking-wider">Distância</span>
+              </div>
+            </div>
+            
+            <div className="mb-6">
+              <label className="block text-sm font-semibold text-slate-700 mb-2">KM Final do Veículo</label>
+              <input 
+                type="number" 
+                value={checklistFinalKm}
+                onChange={(e) => setChecklistFinalKm(e.target.value)}
+                placeholder="Ex: 150200"
+                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+              />
+            </div>
+
+            <button 
+              onClick={async () => {
+                if (!checklistFinalKm) {
+                  alert('Por favor, insira o KM Final.');
+                  return;
+                }
+                const finalKmNum = parseInt(checklistFinalKm);
+                
+                // Find active daily log
+                const todayStr = new Date().toISOString().split('T')[0];
+                const activeLog = dailyLogs?.find(l => l.driverId === driverId && l.status === 'active' && l.date === todayStr);
+                
+                if (activeLog) {
+                  if (finalKmNum < activeLog.initialKm) {
+                    const confirmInconsistent = window.confirm(
+                      `Atenção: O KM Final informado (${finalKmNum} km) é MENOR que o KM Inicial do dia (${activeLog.initialKm} km).\n\nDeseja confirmar e seguir com esta inconsistência?`
+                    );
+                    if (!confirmInconsistent) {
+                      return;
+                    }
+                  }
+
+                  await updateDailyLog(activeLog.id, {
+                    finalKm: finalKmNum,
+                    status: 'completed'
+                  });
+                  // Update vehicle initial KM
+                  if (activeLog.vehicleId) {
+                    await updateVehicle(activeLog.vehicleId, {
+                      initialKm: finalKmNum
+                    });
+                    
+                    // Analytics Preditivo: Checagem de Limites de Manutenção
+                    const diffKm = finalKmNum - activeLog.initialKm;
+                    if (diffKm > 0) {
+                      const thresholds = [
+                        { name: "Troca de Óleo", limit: 10000 },
+                        { name: "Revisão de Pneus e Freios", limit: 40000 }
+                      ];
+                      
+                      for (const threshold of thresholds) {
+                        const prevMilestone = Math.floor(activeLog.initialKm / threshold.limit);
+                        const newMilestone = Math.floor(finalKmNum / threshold.limit);
+                        
+                        if (newMilestone > prevMilestone) {
+                          // Limite ultrapassado, cria um chamado interno para a Oficina!
+                          try {
+                            await addDoc(collection(db, 'external_requests'), {
+                              type: 'coleta', 
+                              requesterName: `SISTEMA PREDITIVO - ${threshold.name}`,
+                              address: `Oficina - Revisar Veículo ${activeLog.vehiclePlate}`,
+                              contactPhone: 'Automático',
+                              observations: `ALERTA PREDITIVO: O veículo ${activeLog.vehiclePlate} atingiu a marca de ${finalKmNum} KM rodados e necessita de ${threshold.name}. Este chamado foi gerado automaticamente pelo Orkestria AI.`,
+                              status: 'pending',
+                              read: false,
+                              createdAt: new Date().toISOString()
+                            });
+                          } catch (err) {
+                            console.error("Erro ao criar chamado preditivo", err);
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+
+                if (driverId || driverName) {
+                  try {
+                    await syncDriverStatus({ id: driverId, name: driverName }, 'offline', null);
+                  } catch (err) {
+                    console.warn("Erro ao definir status offline no encerramento:", err);
+                  }
+                }
+                setShowEndOfDay(false);
+                setChecklistFinalKm('');
+              }}
+              className="w-full bg-slate-800 hover:bg-slate-900 text-white font-bold py-3.5 rounded-xl transition-colors active:scale-95"
+            >
+              Confirmar e Fechar
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const renderPendingCloseModal = () => {
+    if (!showPendingCloseModal || !pendingCloseLog) return null;
+    
+    return (
+      <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div className="bg-white w-full max-w-sm rounded-3xl overflow-hidden shadow-2xl animate-in slide-in-from-bottom-10 fade-in duration-300">
+          <div className="bg-amber-600 p-6 text-center text-white">
+            <div className="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center mx-auto mb-4">
+              <AlertTriangle size={32} className="text-white" />
+            </div>
+            <h2 className="text-2xl font-bold">Encerrar Dia Pendente</h2>
+            <p className="text-amber-100 mt-1 opacity-90">Turno de {pendingCloseLog.date.split('-').reverse().join('/')}</p>
+          </div>
+          
+          <div className="p-6">
+            <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 mb-4 text-sm text-amber-900">
+              <p><strong>Veículo:</strong> {pendingCloseLog.vehiclePlate}</p>
+              <p className="mt-1"><strong>KM Inicial:</strong> {pendingCloseLog.initialKm} KM</p>
+            </div>
+            
+            <p className="text-sm text-slate-600 mb-4 text-center leading-relaxed">
+              Você não encerrou o dia anterior com o KM Final. Por regra, para receber novas demandas hoje, informe abaixo o <strong>KM Final</strong> daquele turno.
+            </p>
+
+            <div className="mb-6">
+              <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-2">
+                Odômetro Final / KM Final
+              </label>
+              <input 
+                type="number"
+                value={pendingFinalKm}
+                onChange={e => setPendingFinalKm(e.target.value)}
+                placeholder="Ex: 45280"
+                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500"
+              />
+            </div>
+
+            <div className="flex gap-3">
+              <button 
+                onClick={() => {
+                  setShowPendingCloseModal(false);
+                  setPendingCloseLog(null);
+                }}
+                className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-3.5 rounded-xl transition-colors active:scale-95"
+              >
+                Cancelar
+              </button>
+              <button 
+                onClick={async () => {
+                  if (!pendingFinalKm) {
+                    alert('Por favor, insira o KM Final do turno.');
+                    return;
+                  }
+                  const finalKmNum = parseInt(pendingFinalKm);
+                  if (finalKmNum < pendingCloseLog.initialKm) {
+                    const confirmInconsistent = window.confirm(
+                      `Atenção: O KM Final informado (${finalKmNum} km) é MENOR que o KM Inicial registrado (${pendingCloseLog.initialKm} km).\n\nDeseja confirmar e seguir com esta inconsistência?`
+                    );
+                    if (!confirmInconsistent) {
+                      return;
+                    }
+                  }
+
+                  try {
+                    await updateDailyLog(pendingCloseLog.id, {
+                      finalKm: finalKmNum,
+                      status: 'completed'
+                    });
+                    if (pendingCloseLog.vehicleId) {
+                      await updateVehicle(pendingCloseLog.vehicleId, {
+                        initialKm: finalKmNum
+                      });
+                    }
+                    try {
+                      await syncDriverStatus({ id: driverId, name: driverName }, 'offline', null);
+                    } catch (err) {
+                      console.warn("Erro ao definir offline após encerramento pendente:", err);
+                    }
+                    setShowPendingCloseModal(false);
+                    setPendingCloseLog(null);
+                    setPendingFinalKm('');
+                    alert(`Turno do dia ${pendingCloseLog.date.split('-').reverse().join('/')} encerrado com sucesso!\n\nAgora você pode iniciar o dia de hoje realizando o Checking (Checklist + KM Inicial).`);
+                    if (driverStatus === 'offline') {
+                      setShowVehicleSelection(true);
+                    }
+                  } catch (e) {
+                    console.error(e);
+                    alert("Erro ao encerrar turno pendente.");
+                  }
+                }}
+                className="flex-1 bg-amber-600 hover:bg-amber-700 text-white font-bold py-3.5 rounded-xl transition-colors active:scale-95 flex items-center justify-center gap-2 shadow-md"
+              >
+                <CheckCircle size={18} />
+                Encerrar
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <div className="flex flex-col min-h-screen bg-slate-50 font-sans">
+      {renderModals()}
+      {renderEndOfDaySummary()}
+      {renderPendingCloseModal()}
+      <div className="bg-white shadow-sm p-5 sticky top-0 z-10 flex items-center justify-between border-b border-slate-200">
+        <div>
+          <h1 className="text-xl font-bold text-slate-800">Orkestria Entregador</h1>
+          <p className="text-sm text-slate-500">Olá, {driverName?.split(' ')[0] || 'Motorista'}</p>
+        </div>
+        <div className="flex items-center gap-2">
+          {(!activeRoute && unclosedPrevLog) ? (
+            <button 
+              onClick={() => {
+                setPendingCloseLog(unclosedPrevLog);
+                setPendingFinalKm('');
+                setShowPendingCloseModal(true);
+              }} 
+              className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg font-bold text-xs shadow-sm flex items-center gap-1.5"
+            >
+              <AlertTriangle size={14} />
+              Encerrar Dia Anterior
+            </button>
+          ) : (!activeRoute && activeTodayLog) ? (
+            <button 
+              onClick={() => setShowEndOfDay(true)} 
+              className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-bold text-xs shadow-sm"
+            >
+              Encerrar Dia
+            </button>
+          ) : null}
+          <button 
+            onClick={toggleOnlineStatus}
+            className={`px-3 py-1.5 rounded-lg font-bold text-xs transition-colors flex items-center gap-1.5 ${driverStatus === 'active' || driverStatus === 'on_route' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}
+          >
+            <div className={`w-2 h-2 rounded-full ${driverStatus === 'active' || driverStatus === 'on_route' ? 'bg-emerald-500' : 'bg-slate-400'}`} />
+            {driverStatus === 'active' || driverStatus === 'on_route' ? 'Online' : 'Offline'}
+          </button>
+          <div className="relative" ref={userMenuRef}>
+            <div 
+              onClick={() => setShowUserMenu(prev => !prev)}
+              className="w-9 h-9 rounded-full bg-gradient-to-br from-[var(--color-brand-cyan)] to-[var(--color-brand-blue)] flex items-center justify-center text-white shadow-sm ring-2 ring-white cursor-pointer active:scale-95 transition-transform select-none"
+              title="Perfil e Sair"
+            >
+              <User size={18} />
+            </div>
+
+            {showUserMenu && (
+              <div className="absolute right-0 mt-2 w-52 bg-white rounded-xl shadow-lg border border-slate-100 transition-all origin-top-right z-50 p-1.5">
+                <div className="p-2.5 border-b border-slate-100 mb-1">
+                  <p className="text-sm font-semibold text-slate-800 truncate">{driverName || 'Motorista'}</p>
+                  <p className="text-xs text-slate-500">Entregador</p>
+                </div>
+                <button 
+                  onClick={async () => {
+                    setShowUserMenu(false);
+                    if (driverId || driverName) {
+                      try {
+                        await syncDriverStatus({ id: driverId, name: driverName, email: auth.currentUser?.email || undefined }, 'offline', null);
+                      } catch (err) {
+                        console.warn("Erro ao colocar offline no logout:", err);
+                      }
+                    }
+                    localStorage.removeItem('orkestria_driver_session_id');
+                    signOut(auth);
+                  }}
+                  className="w-full text-left px-3 py-2.5 text-sm text-red-600 font-medium hover:bg-red-50 rounded-lg transition-colors flex items-center gap-2.5"
+                >
+                  <LogOut size={16} className="text-red-500" />
+                  <span>Sair da Conta</span>
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div className="p-4 flex-1">
+        {notificationStatus === 'default' && (
+          <div className="mb-6 bg-gradient-to-r from-blue-500 to-cyan-500 rounded-2xl p-4 text-white shadow-md flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-white/20 rounded-full">
+                <BellRing size={20} className="text-white" />
+              </div>
+              <div>
+                <h3 className="font-bold text-sm">Ative as Notificações</h3>
+                <p className="text-xs text-blue-100 mt-0.5">Receba alertas de novas rotas</p>
+              </div>
+            </div>
+            <button 
+              onClick={enableNotifications}
+              className="px-4 py-2 bg-white text-blue-600 rounded-xl font-bold text-sm shadow-sm active:scale-95 transition-transform"
+            >
+              Ativar
+            </button>
+          </div>
+        )}
+
+        {unclosedPrevLog ? (
+          <div className="mb-6 bg-gradient-to-br from-amber-500 to-orange-600 rounded-2xl p-5 text-white shadow-lg border border-amber-400">
+            <div className="flex items-start gap-4">
+              <div className="p-3 bg-white/20 rounded-xl flex-shrink-0">
+                <AlertTriangle size={28} className="text-white" />
+              </div>
+              <div className="flex-1">
+                <span className="inline-block px-2.5 py-0.5 bg-white/20 rounded-full text-xs font-black uppercase tracking-wider mb-2">
+                  Bloqueio por Pendência
+                </span>
+                <h3 className="font-bold text-lg leading-tight">
+                  Turno de {unclosedPrevLog.date.split('-').reverse().join('/')} pendente de encerramento!
+                </h3>
+                <p className="text-sm text-amber-50 mt-1.5 leading-relaxed">
+                  Para receber as novas demandas de hoje, é <strong>obrigatório</strong> informar o KM Final do veículo <strong>{unclosedPrevLog.vehiclePlate}</strong> e encerrar o dia anterior.
+                </p>
+                <div className="mt-4 flex flex-wrap items-center gap-3">
+                  <button 
+                    onClick={() => {
+                      setPendingCloseLog(unclosedPrevLog);
+                      setPendingFinalKm('');
+                      setShowPendingCloseModal(true);
+                    }}
+                    className="px-5 py-2.5 bg-white text-orange-700 hover:bg-orange-50 rounded-xl font-bold text-sm shadow-md active:scale-95 transition-all flex items-center gap-2"
+                  >
+                    <CheckCircle size={18} className="text-orange-600" />
+                    Encerrar Dia {unclosedPrevLog.date.split('-').reverse().join('/')} (Informar KM Final)
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : (driverStatus === 'offline' || !activeTodayLog) ? (
+          <div className="mb-6 bg-gradient-to-br from-blue-600 to-cyan-600 rounded-2xl p-5 text-white shadow-md">
+            <div className="flex items-start gap-4">
+              <div className="p-3 bg-white/20 rounded-xl flex-shrink-0">
+                <CheckCircle size={28} className="text-white" />
+              </div>
+              <div className="flex-1">
+                <h3 className="font-bold text-lg leading-tight">
+                  Iniciar Dia de Trabalho ({todayStr.split('-').reverse().join('/')})
+                </h3>
+                <p className="text-sm text-blue-100 mt-1 leading-relaxed">
+                  Para ficar online e receber novas rotas hoje, selecione seu veículo e realize o <strong>Checking (KM Inicial + Checklist)</strong>.
+                </p>
+                <button 
+                  onClick={() => setShowVehicleSelection(true)}
+                  className="mt-4 px-5 py-2.5 bg-white text-blue-600 hover:bg-blue-50 rounded-xl font-bold text-sm shadow-md active:scale-95 transition-all flex items-center gap-2"
+                >
+                  <CheckCircle size={18} className="text-blue-600" />
+                  Fazer Checking (KM + Checklist)
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
+
+        <h2 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-4 flex items-center gap-2">
+          <Package size={16} /> Novas Rotas Disponíveis
+        </h2>
+
+        {pendingRoutes.length === 0 ? (
+          <div className="text-center py-12 px-4 bg-white rounded-2xl border border-dashed border-slate-300">
+            <Truck size={48} className="mx-auto text-slate-300 mb-4" />
+            {unclosedPrevLog ? (
+              <>
+                <p className="text-amber-800 font-bold mb-1">Novas Demandas Bloqueadas</p>
+                <p className="text-slate-500 text-sm max-w-xs mx-auto">
+                  Para receber as rotas de hoje, encerre o turno do dia anterior ({unclosedPrevLog.date.split('-').reverse().join('/')}) com o KM Final.
+                </p>
+              </>
+            ) : !activeTodayLog ? (
+              <>
+                <p className="text-blue-800 font-bold mb-1">Expediente Não Iniciado</p>
+                <p className="text-slate-500 text-sm max-w-xs mx-auto">
+                  Faça o Checking (KM Inicial e Checklist) para liberar suas entregas do dia.
+                </p>
+              </>
+            ) : (
+              <p className="text-slate-500 font-medium">Nenhuma rota disponível no momento.</p>
+            )}
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {pendingRoutes.map(route => (
+              <div key={route.id} className="bg-white rounded-2xl p-5 shadow-sm border border-slate-200">
+                <div className="flex justify-between items-start mb-3">
+                  <div className="font-mono font-bold text-lg text-slate-800">#{formatRouteId(route)}</div>
+                  <div className="px-2.5 py-1 bg-amber-100 text-amber-700 text-xs font-bold rounded-lg">Pendente</div>
+                </div>
+                
+                <div className="space-y-2 mb-5">
+                  <div className="flex items-center gap-2 text-slate-600 text-sm">
+                    <MapPin size={16} className="text-slate-400" />
+                    <span className="font-medium">{route.stops} paradas</span>
+                  </div>
+                  <div className="flex items-center gap-2 text-slate-600 text-sm">
+                    <Navigation size={16} className="text-slate-400" />
+                    <span className="font-medium">{route.distance} km • {route.estimatedTime}</span>
+                  </div>
+                </div>
+
+                <div className="flex gap-3">
+                  <button 
+                    onClick={() => handleAcceptRoute(route.id)}
+                    className="flex-1 py-3.5 bg-gradient-to-r from-[var(--color-brand-cyan)] to-[var(--color-brand-blue)] text-white rounded-xl font-bold active:scale-[0.98] transition-transform shadow-sm flex items-center justify-center gap-2"
+                  >
+                    <CheckCircle size={18} /> Aceitar
+                  </button>
+                  <button 
+                    onClick={() => handleRejectRoute(route.id)}
+                    className="px-4 py-3.5 bg-slate-100 text-slate-600 rounded-xl font-bold active:scale-[0.98] transition-transform flex items-center justify-center"
+                  >
+                    <XCircle size={18} />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      
+      
+
+      
+
+      
+</div>
+    </div>
+  );
+}
