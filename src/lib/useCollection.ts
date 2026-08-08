@@ -194,8 +194,26 @@ export function useCollection<T>(collectionName: string) {
 
   const update = async (id: string, item: Partial<T>) => {
     const docRef = doc(db, collectionName, id);
-    const res = await updateDoc(docRef, cleanUndefined(item));
+    const cleanedItem = cleanUndefined(item);
+    const res = await updateDoc(docRef, cleanedItem);
     trackWrite(1);
+    
+    // Atualização agressiva do cache local para que a UI reflita imediatamente (especialmente útil se o circuit breaker desativar onSnapshot)
+    const currentTenant = getTenantUser();
+    const currentCacheKey = getCacheKey(collectionName, currentTenant?.companyId);
+    
+    setData(prev => {
+      const newData = prev.map((d: any) => d.id === id ? { ...d, ...cleanedItem } : d);
+      setLocalCache(currentCacheKey, newData);
+      return newData;
+    });
+
+    const listener = sharedListeners.get(currentCacheKey);
+    if (listener) {
+       listener.data = listener.data.map(d => d.id === id ? { ...d, ...cleanedItem } : d);
+       listener.subscribers.forEach(cb => cb(listener.data));
+    }
+
     return res;
   };
 

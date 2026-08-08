@@ -232,35 +232,40 @@ export default function RequestsPage() {
       }
     }
 
-    if (editingId) {
-      await update(editingId, {
-        ...manualForm,
-        ...(lat && lng ? { lat, lng } : {})
-      });
-    } else {
-      await addDoc(collection(db, 'external_requests'), {
-        ...manualForm,
-        read: true,
-        createdAt: new Date().toISOString(),
-        lat,
-        lng
-      });
-    }
+    try {
+      if (editingId) {
+        await update(editingId, {
+          ...manualForm,
+          ...(lat && lng ? { lat, lng } : {})
+        });
+      } else {
+        await addDoc(collection(db, 'external_requests'), {
+          ...manualForm,
+          read: true,
+          createdAt: new Date().toISOString(),
+          lat,
+          lng
+        });
+      }
 
-    setIsModalOpen(false);
-    setEditingId(null);
-    setManualForm({
-      type: 'entrega',
-      address: '',
-      dropoffAddress: '',
-      requesterName: '',
-      contactPhone: '',
-      osNumber: '',
-      orderNumber: '',
-      observations: '',
-      scheduledDate: '',
-      status: 'pending'
-    });
+      setIsModalOpen(false);
+      setEditingId(null);
+      setManualForm({
+        type: 'entrega',
+        address: '',
+        dropoffAddress: '',
+        requesterName: '',
+        contactPhone: '',
+        osNumber: '',
+        orderNumber: '',
+        observations: '',
+        scheduledDate: '',
+        status: 'pending'
+      });
+    } catch (error) {
+      console.error("Erro ao salvar demanda:", error);
+      alert("Ocorreu um erro ao salvar as alterações. Tente novamente.");
+    }
   };
 
   const handleGenerateRoute = () => {
