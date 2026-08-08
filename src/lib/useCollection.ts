@@ -68,6 +68,19 @@ function setLocalCache(cacheKey: string, data: any[]): void {
   }
 }
 
+function clearAllCache() {
+  try {
+    const keysToRemove = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && (key.startsWith('orkestria_cache_') || key.startsWith('firestore_targets_'))) {
+        keysToRemove.push(key);
+      }
+    }
+    keysToRemove.forEach(k => localStorage.removeItem(k));
+  } catch(e) {}
+}
+
 export function useCollection<T>(collectionName: string) {
   const tenant = getTenantUser();
   const cacheKey = getCacheKey(collectionName, tenant?.companyId);
@@ -187,7 +200,17 @@ export function useCollection<T>(collectionName: string) {
     const payload = cleanUndefined({
       ...item,
     });
-    const res = await addDoc(collection(db, collectionName), payload);
+    let res;
+    try {
+      res = await addDoc(collection(db, collectionName), payload);
+    } catch(err: any) {
+      if (String(err).includes('QuotaExceededError')) {
+        clearAllCache();
+        res = await addDoc(collection(db, collectionName), payload);
+      } else {
+        throw err;
+      }
+    }
     trackWrite(1);
     return res;
   };
@@ -195,7 +218,20 @@ export function useCollection<T>(collectionName: string) {
   const update = async (id: string, item: Partial<T>) => {
     const docRef = doc(db, collectionName, id);
     const cleanedItem = cleanUndefined(item);
-    const res = await updateDoc(docRef, cleanedItem);
+    
+    let res;
+    try {
+      res = await updateDoc(docRef, cleanedItem);
+    } catch (err: any) {
+      if (String(err).includes('QuotaExceededError')) {
+        console.warn('QuotaExceededError detectado. Limpando cache e tentando novamente...');
+        clearAllCache();
+        res = await updateDoc(docRef, cleanedItem);
+      } else {
+        throw err;
+      }
+    }
+    
     trackWrite(1);
     
     // Atualização agressiva do cache local para que a UI reflita imediatamente (especialmente útil se o circuit breaker desativar onSnapshot)
