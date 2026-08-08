@@ -264,7 +264,7 @@ export default function RequestsPage() {
       });
     } catch (error) {
       console.error("Erro ao salvar demanda:", error);
-      alert("Ocorreu um erro ao salvar as alterações. Tente novamente.");
+      alert("Erro ao salvar: " + (error instanceof Error ? error.message : JSON.stringify(error)));
     }
   };
 
